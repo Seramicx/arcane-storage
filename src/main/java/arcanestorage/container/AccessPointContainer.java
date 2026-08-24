@@ -74,6 +74,11 @@ public class AccessPointContainer extends Container {
          throw new IllegalStateException("Level must be a server level");
       }
 
+      if (!arcanestorage.access.SettlementAccess.isAllowed(level, point.tileX, point.tileY, client)) {
+         client.sendChatMessage(Localization.translate("ui", "arcanestorage_access_denied"));
+         return;
+      }
+
       point.invalidate();
       ContainerRegistry.openAndSendContainer(client, openPacket(containerID, point));
    }

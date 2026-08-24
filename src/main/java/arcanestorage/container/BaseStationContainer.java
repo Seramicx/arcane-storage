@@ -72,6 +72,11 @@ public class BaseStationContainer extends Container {
          throw new IllegalStateException("Level must be a server level");
       }
 
+      if (!arcanestorage.access.SettlementAccess.isAllowed(level, station.tileX, station.tileY, client)) {
+         client.sendChatMessage(necesse.engine.localization.Localization.translate("ui", "arcanestorage_access_denied"));
+         return;
+      }
+
       // The station is validated before the panel opens, so a player who has just placed a transceiver does not open
       // a window still saying they need one. Cheap: one walk, and only on a click.
       station.invalidate();

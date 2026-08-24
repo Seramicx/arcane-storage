@@ -1155,6 +1155,11 @@ public class StorageTerminalContainer extends Container {
          throw new IllegalStateException("Level must be a server level");
       }
 
+      if (!arcanestorage.access.SettlementAccess.isAllowed(level, tileX, tileY, client)) {
+         client.sendChatMessage(Localization.translate("ui", "arcanestorage_access_denied"));
+         return;
+      }
+
       Packet packet = new Packet();
       PacketWriter writer = new PacketWriter(packet);
 

@@ -396,6 +396,11 @@ public class UnitUpgradeContainer extends Container {
 
    /** Opens the panel for one player. */
    public static void open(int containerID, ServerClient client, ObjectEntity unit) {
+      if (!arcanestorage.access.SettlementAccess.isAllowed(unit.getLevel(), unit.tileX, unit.tileY, client)) {
+         client.sendChatMessage(Localization.translate("ui", "arcanestorage_access_denied"));
+         return;
+      }
+
       ContainerRegistry.openAndSendContainer(client, openPacket(containerID, unit, client));
    }
 

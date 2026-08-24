@@ -107,6 +107,22 @@ public class StorageTerminalObjectEntity extends InventoryObjectEntity {
    }
 
    /**
+    * And settlers are told there is nothing here for them.
+    *
+    * <p>Same reasoning as {@link StationUnitObjectEntity#getSettlementStorage()}, and the same fix: the
+    * default derives a settlement storage range from the inventory, and this inventory holds installed
+    * crafting benches. Without this override, a settler with access to this object via settlement storage
+    * could deposit into or haul from these ten slots directly -- bypassing every container slot the player
+    * actually sees, since {@link arcanestorage.container.StorageTerminalContainer} never exposes this
+    * inventory itself, only the ones on linked Station Units. An item placed that way would be real,
+    * `isItemValid`-accepted, and invisible, which is worse than a display bug.
+    */
+   @Override
+   public necesse.inventory.InventoryRange getSettlementStorage() {
+      return null;
+   }
+
+   /**
     * The hooks a station overrides only because it needs to know where it is.
     *
     * <p>{@link SettlementWorkstationObject} is the game's own interface for "an object settlers can

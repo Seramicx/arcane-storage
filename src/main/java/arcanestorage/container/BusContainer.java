@@ -86,6 +86,11 @@ this.filter = local;
          throw new IllegalStateException("Level must be a server level");
       }
 
+      if (!arcanestorage.access.SettlementAccess.isAllowed(level, bus.tileX, bus.tileY, client)) {
+         client.sendChatMessage(necesse.engine.localization.Localization.translate("ui", "arcanestorage_access_denied"));
+         return;
+      }
+
       ContainerRegistry.openAndSendContainer(client, openPacket(containerID, bus));
    }
 

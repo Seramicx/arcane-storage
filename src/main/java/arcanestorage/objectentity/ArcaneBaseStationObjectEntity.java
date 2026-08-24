@@ -104,6 +104,19 @@ public class ArcaneBaseStationObjectEntity extends necesse.entity.objectEntity.I
       this.type = TYPE;
    }
 
+   /**
+    * Nothing here for a settler either, though {@link #SLOTS} being zero already makes this a no-op today.
+    *
+    * <p>Kept anyway, for the same reason a zero-slot inventory still gets a filter elsewhere in this mod: a
+    * guard that only matters if the field it guards ever changes is cheaper to write once now than to remember
+    * later, and {@code getSettlementStorage()}'s default would otherwise expose whatever this inventory turns
+    * into if {@link #SLOTS} is ever raised for some future feature.
+    */
+   @Override
+   public necesse.inventory.InventoryRange getSettlementStorage() {
+      return null;
+   }
+
    /** This station's tier, read from the object standing on the tile rather than stored twice. */
    public UnitTier tier() {
       Level level = this.getLevel();

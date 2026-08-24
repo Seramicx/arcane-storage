@@ -62,7 +62,9 @@ public final class RemoteTerminal {
       /** The stored level identifier is not one the engine accepts. */
       BAD_LEVEL,
       /** The level resolved, but nothing at the tile is a Storage Terminal any more. */
-      GONE
+      GONE,
+      /** The transceiver is real and in place, but the settlement covering its tile refuses this client. */
+      DENIED
    }
 
    /** A resolved terminal and its level, or a reason it could not be resolved. */
@@ -144,6 +146,15 @@ public final class RemoteTerminal {
       // rest of the mod asks this question (UnitUpgrade tests instanceof StationUnitObject).
       if (!(level.getObject(binding.tileX, binding.tileY) instanceof WirelessTransceiverObject)) {
          return new Resolved(Result.GONE, level, null);
+      }
+
+      // The item stores a tile, not a permission -- pairing never asked whether the pairing player still has
+      // access, and a paired item can outlive a settlement's ownership changing hands, a team departure, or the
+      // settlement it was inside being disbanded and refounded by someone else. Checked here rather than only at
+      // pairing time because this is the one place every use of the item passes through, both the initial open
+      // and the per-tick validity re-check in RemoteTerminalContainer.isStillValid.
+      if (!arcanestorage.access.SettlementAccess.isAllowed(level, binding.tileX, binding.tileY, client)) {
+         return new Resolved(Result.DENIED, level, null);
       }
 
       return new Resolved(Result.OK, level, (WirelessTransceiverObjectEntity)entity);
