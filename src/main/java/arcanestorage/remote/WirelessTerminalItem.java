@@ -1,11 +1,9 @@
 package arcanestorage.remote;
 
-import arcanestorage.object.StorageTerminalObject;
 import arcanestorage.object.UnitTier;
 import arcanestorage.object.WirelessTransceiverObject;
 import necesse.engine.localization.Localization;
 import necesse.engine.network.server.ServerClient;
-import necesse.engine.util.GameMath;
 import necesse.entity.mobs.PlayerMob;
 import necesse.entity.mobs.itemAttacker.ItemAttackSlot;
 import necesse.entity.mobs.itemAttacker.ItemAttackerMob;
@@ -59,7 +57,8 @@ public class WirelessTerminalItem extends Item implements ItemInteractAction {
    }
 
    /**
-    * True for any tile, so a click always uses the item rather than swinging it.
+    * True for any tile, so a click always uses the item rather than swinging it -- when nothing else claims
+    * the click first. See {@link #overridesObjectInteract} for what "first" means here.
     *
     * <p>Deliberately not restricted to transceivers. Restricting it would make the item inert everywhere except in
     * front of the thing it is meant to replace visiting.
@@ -69,13 +68,30 @@ public class WirelessTerminalItem extends Item implements ItemInteractAction {
       return attackerMob != null && attackerMob.isPlayer;
    }
 
+   /**
+    * False, so a chest, terminal, or any other placed object gets first refusal at a click, exactly as it would
+    * for any other held item -- and the wireless terminal only opens its own network when nothing else answered.
+    *
+    * <p>Used to be {@code true} unconditionally, which is what made holding this item so disruptive: a click
+    * that should have opened a chest across the room opened the wireless network instead, every time, because
+    * {@code overridesObjectInteract} ran before the engine ever looked for an object at the clicked tile (see
+    * {@code PlayerMob.runClientInteract}) and this method gave it no reason not to. The engine's own fallback
+    * already does the right thing without any override here: an item is only asked at all once no object has
+    * claimed the click, which is exactly "open the network when there is nothing else to click on".
+    *
+    * <p>The one place this used to matter -- pairing to a Wireless Transceiver, which is itself always an
+    * interactable object and would therefore never fall through to the item at all -- is handled by
+    * {@link WirelessTransceiverObject#interact} checking what the player is holding before it opens its own
+    * upgrade panel, rather than by this item claiming the click first. See {@link #pairTo} and that method's
+    * own doc for why the check belongs there and not here.
+    */
    @Override
    public boolean overridesObjectInteract(Level level, PlayerMob player, InventoryItem item) {
-      return true;
+      return false;
    }
 
    /**
-    * One click does both jobs: on a transceiver it pairs, anywhere else it opens what it is paired to.
+    * Opens what the item is paired to, when nothing else has claimed the click.
     *
     * <p><b>The engine runs this on both sides</b> -- {@code PlayerMob.runClientItemLevelInteract} calls it on the
     * clicking client so the swing and any change to the item are immediate, and the server then runs it for real.
@@ -83,6 +99,10 @@ public class WirelessTerminalItem extends Item implements ItemInteractAction {
     * misused. An earlier version instead carried a possibly-null {@code ServerClient} into its helpers, which
     * null-checked it in two places and dereferenced it in a third, and threw on the first right-click in game.
     * Deciding once is worth more than checking three times.
+    *
+    * <p>Pairing no longer happens here: a Wireless Transceiver is always an interactable object at its own tile,
+    * so now that {@link #overridesObjectInteract} is false, this method is never even reached when the player
+    * clicks one -- {@link WirelessTransceiverObject#interact} runs instead, and calls {@link #pairTo} itself.
     */
    @Override
    public InventoryItem onLevelInteract(Level level, int x, int y, ItemAttackerMob attackerMob, int attackHeight,
@@ -91,18 +111,9 @@ public class WirelessTerminalItem extends Item implements ItemInteractAction {
          return item;
       }
 
-      int tileX = GameMath.getTileCoordinate(x);
-      int tileY = GameMath.getTileCoordinate(y);
-      boolean onTransceiver = level.getObject(tileX, tileY) instanceof WirelessTransceiverObject;
-
       if (!level.isServer()) {
-         // The client predicts the pairing only, so the tooltip is right before the server's reply arrives.
-         // It says nothing and opens nothing; both of those are the server's to decide, and a container in
-         // particular arrives as PacketOpenContainer rather than being opened locally.
-         if (onTransceiver) {
-            new RemoteBinding(level, tileX, tileY).write(item);
-         }
-
+         // The client predicts nothing here: opening a container arrives as PacketOpenContainer rather than
+         // being opened locally, and the chat messages below are the server's alone to send.
          return item;
       }
 
@@ -111,24 +122,44 @@ public class WirelessTerminalItem extends Item implements ItemInteractAction {
          return item;
       }
 
-      if (onTransceiver) {
-         return this.pair(level, tileX, tileY, client, item);
-      }
-
-      // Clicking the placed Storage Terminal used to be how pairing worked, so saying nothing here would read as
-      // the item being broken to anyone who learned the old way -- including a save where a terminal was the
-      // pairing target.
-      if (level.getObject(tileX, tileY) instanceof StorageTerminalObject) {
-         client.sendChatMessage(Localization.translate("ui", "arcanestorage_wireless_pairtotransceiver"));
-         return item;
-      }
-
       this.open(client, item);
       return item;
    }
 
-   /** Binds the item to the transceiver that was clicked, replacing any previous pairing. */
-   private InventoryItem pair(Level level, int tileX, int tileY, ServerClient client, InventoryItem item) {
+   /**
+    * Binds a wireless terminal to the transceiver at {@code (x, y)}, replacing any previous pairing.
+    *
+    * <p>Called from {@link WirelessTransceiverObject#interact} rather than from this item's own
+    * {@link #onLevelInteract}, because {@link #overridesObjectInteract} is false: the transceiver is always the
+    * object found first at its own tile, so the item is never asked at all when one is clicked. The transceiver
+    * checks what the player is holding before running its normal (upgrade-panel) interaction, and calls this
+    * method instead when it finds a wireless terminal -- the one case where the object's own default behaviour
+    * needs to be pre-empted rather than left to win outright.
+    *
+    * <p>Runs on both sides for the same reason {@link #onLevelInteract} used to: the client predicts the write to
+    * its own copy of the item so the tooltip is right immediately, and says nothing else, since a chat message
+    * from the client would double up with the server's once its own copy of this method runs moments later.
+    *
+    * <p><b>{@code x, y} are already tile coordinates, not level pixels.</b> They arrive via
+    * {@code GameObject.interact(Level, int, int, PlayerMob)}, whose caller is {@code LevelObject.interact}:
+    * {@code this.object.interact(this.level, this.tileX, this.tileY, player)}. That is a different contract
+    * from {@code ItemInteractAction.onLevelInteract}'s {@code x, y}, which *are* level pixels and need
+    * {@code GameMath.getTileCoordinate} to become a tile -- the method this replaced. Applying that conversion
+    * here divided an already-small tile coordinate down further and landed on the wrong tile entirely, which
+    * is what a `ClassCastException` from `AirObject` to `WirelessTransceiverObject` on this line was: not a
+    * corrupt binding, a tile lookup at the wrong place.
+    */
+   public void pairTo(Level level, int tileX, int tileY, PlayerMob player, InventoryItem item) {
+      if (!level.isServer()) {
+         new RemoteBinding(level, tileX, tileY).write(item);
+         return;
+      }
+
+      ServerClient client = player.getServerClient();
+      if (client == null) {
+         return;
+      }
+
       RemoteBinding binding = new RemoteBinding(level, tileX, tileY);
       RemoteBinding existing = RemoteBinding.read(item);
 
@@ -136,7 +167,7 @@ public class WirelessTerminalItem extends Item implements ItemInteractAction {
          // Re-pairing to the same transceiver is not an error, and saying nothing would read as the click
          // having missed. It is also the natural way a player checks that pairing worked.
          client.sendChatMessage(Localization.translate("ui", "arcanestorage_wireless_alreadypaired"));
-         return item;
+         return;
       }
 
       binding.write(item);
@@ -150,12 +181,11 @@ public class WirelessTerminalItem extends Item implements ItemInteractAction {
                "tier", Localization.translate("ui", "arcanestorage_tier_" + governing.name().toLowerCase())));
       }
 
-      // Nothing else needs doing to make the change stick or reach the client: ItemAttackerMob writes this
-      // method's return value back with slot.setItem(resultItem), and that is the engine's own path for an
-      // item that changes as it is used.
+      // item is the live reference the slot itself holds (PlayerMob.getSelectedItem() does not copy), so
+      // mutating its GND map via binding.write above is already enough to make the change stick; nothing here
+      // needs to write it back to a slot the way onLevelInteract's return value used to.
       client.sendChatMessage(Localization.translate("ui", "arcanestorage_wireless_pairedto",
             "x", String.valueOf(tileX), "y", String.valueOf(tileY)));
-      return item;
    }
 
    /** Opens the paired network, loading its level if need be, or explains why it cannot. */
@@ -175,6 +205,9 @@ public class WirelessTerminalItem extends Item implements ItemInteractAction {
             return;
          case GONE:
             client.sendChatMessage(Localization.translate("ui", "arcanestorage_wireless_gone"));
+            return;
+         case DENIED:
+            client.sendChatMessage(Localization.translate("ui", "arcanestorage_access_denied"));
             return;
          default:
             Reach.Decision decision = Reach.check(client.playerMob, this.tier, resolved.tier(),

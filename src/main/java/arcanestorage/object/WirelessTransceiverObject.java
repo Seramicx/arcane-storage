@@ -72,14 +72,36 @@ public class WirelessTransceiverObject extends StorageBoxInventoryObject impleme
    }
 
    /**
-    * Right-clicking opens the upgrade panel, exactly as a tiered unit does.
+    * Right-clicking opens the upgrade panel, exactly as a tiered unit does -- unless the click is a
+    * wireless terminal pairing to this transceiver, which takes over instead.
     *
-    * <p>Deliberately not the chest container the base class would open: a transceiver holds nothing, so that window
-    * would be an empty grid. Deliberately not the network either -- a transceiver standing in front of the player is
-    * a worse terminal than a terminal, and making it one would blur what the two objects are for.
+    * <p><b>Why the check runs here rather than in the item.</b> A wireless terminal item used to claim
+    * every right-click for itself via {@code overridesObjectInteract() == true}, unconditionally --
+    * fixed once already, but wrongly, at the item level: an item cannot see what tile is under the
+    * cursor from that method's own signature ({@code overridesObjectInteract(Level, PlayerMob,
+    * InventoryItem)} takes no coordinates), so it could not be selective about which tile it was
+    * allowed to swallow. It could only be all-or-nothing, and all-or-nothing was the original bug --
+    * a held wireless terminal opened itself instead of whatever chest or terminal the player actually
+    * clicked on.
+    *
+    * <p>The engine's own dispatch order in {@code PlayerMob.runClientInteract} already does the right
+    * thing once the item stops overriding it: an object at the clicked tile gets first refusal, and an
+    * item is only asked when no object claimed the click. That correctly restores chests and terminals
+    * taking priority. The one place that breaks is this object, because a transceiver both (a) is
+    * always an interactable object standing at its own tile, so the item is never asked at all when a
+    * transceiver is clicked, yet (b) needs the item's own pairing behaviour to run instead of the
+    * upgrade panel precisely when a wireless terminal is what is doing the clicking. So the check moves
+    * to the one place that already knows both things: this method receives the tile for free, and
+    * {@code player.getSelectedItem()} is enough to see what is doing the clicking.
     */
    @Override
    public void interact(Level level, int x, int y, PlayerMob player) {
+      necesse.inventory.InventoryItem held = player.getSelectedItem();
+      if (held != null && held.item instanceof arcanestorage.remote.WirelessTerminalItem) {
+         ((arcanestorage.remote.WirelessTerminalItem)held.item).pairTo(level, x, y, player, held);
+         return;
+      }
+
       if (!level.isServer()) {
          return;
       }
