@@ -31,17 +31,6 @@ import necesse.engine.save.SaveData;
 public class ArcaneStorageSettings extends ModSettings {
 
    /**
-    * Whether the crafting tab groups recipes into collapsible category sections, as a vanilla
-    * crafting bench does, rather than one flat grid.
-    *
-    * <p>Defaults to grouped: that is how every crafting interface in the game already reads, and a
-    * terminal with several benches installed lists more recipes than any single bench, which is
-    * exactly when grouping earns its keep. Flat stays available because it is fewer clicks when the
-    * list is short, and Elias asked for both rather than a decision between them.
-    */
-   public boolean groupCraftingByCategory = true;
-
-   /**
     * How the terminal's item grid is ordered: {@code group}, {@code name} or {@code amount}.
     *
     * <p>Here rather than attached to the player, and the reasoning is the same as for the theme. This decides what
@@ -54,6 +43,19 @@ public class ArcaneStorageSettings extends ModSettings {
     * sort button produces. An unrecognised value reads as {@code group} rather than failing.
     */
    public String sortMode = "group";
+
+   /**
+    * How deep the storage tab's category tree goes: {@code none}, {@code coarse}, or {@code fine}.
+    *
+    * <p>Same persistence reasoning as {@link #sortMode} -- a per-machine visual preference, not
+    * something worth a packet or a save-format commitment. Defaults to {@code fine}, today's only
+    * behaviour before this setting existed, so an upgrade changes nothing until a player opens the
+    * new dropdown.
+    */
+   public String storageGroupingMode = "fine";
+
+   /** Crafting's own version of {@link #storageGroupingMode}, independent per Elias's own instruction. */
+   public String craftingGroupingMode = "fine";
 
    /**
     * Which interface style the mod's own windows are drawn with: {@code slate}, {@code dark}, or {@code vanilla}.
@@ -165,12 +167,14 @@ public class ArcaneStorageSettings extends ModSettings {
 
    @Override
    public void addSaveData(SaveData save) {
-      save.addBoolean("groupCraftingByCategory", this.groupCraftingByCategory,
-            "Group the terminal's crafting list into category sections rather than one flat grid");
       save.addSafeString("theme", this.theme,
             "Interface style for this mod's windows: slate, dark, or vanilla to use the game's own");
       save.addSafeString("sortMode", this.sortMode,
             "How the terminal orders its grid: group, name or amount. Set from the terminal's sort button");
+      save.addSafeString("storageGroupingMode", this.storageGroupingMode,
+            "How deep the storage tab's category tree goes: none, coarse or fine");
+      save.addSafeString("craftingGroupingMode", this.craftingGroupingMode,
+            "How deep the crafting tab's category tree goes: none, coarse or fine");
 
       SaveData reach = new SaveData("REACH");
       reach.addInt("demonic", this.wirelessRangeDemonic,
@@ -219,13 +223,14 @@ public class ArcaneStorageSettings extends ModSettings {
 
    @Override
    public void applyLoadData(LoadData save) {
-      this.groupCraftingByCategory = save.getBoolean("groupCraftingByCategory", this.groupCraftingByCategory);
       this.theme = arcanestorage.ui.ArcaneStyles.Theme.of(save.getSafeString("theme", this.theme)).settingValue();
 
       // Not validated against the enum here: the enum is a private member of the terminal's form, which is client
       // code, and this class is also constructed on a dedicated server. An unrecognised value is resolved to group
       // where it is read instead, so a hand-edited typo costs the preference rather than the load.
       this.sortMode = save.getSafeString("sortMode", this.sortMode);
+      this.storageGroupingMode = save.getSafeString("storageGroupingMode", this.storageGroupingMode);
+      this.craftingGroupingMode = save.getSafeString("craftingGroupingMode", this.craftingGroupingMode);
 
       LoadData reach = save.getFirstLoadDataByName("REACH");
       if (reach != null) {

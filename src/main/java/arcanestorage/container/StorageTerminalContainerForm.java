@@ -7,8 +7,12 @@ import java.util.List;
 
 import arcanestorage.ui.ArcanePanel;
 import arcanestorage.ui.ArcaneStyles;
+import arcanestorage.ui.ArcaneCheckDropdown;
 import arcanestorage.ui.ArcaneDropdown;
 import arcanestorage.ui.ArcaneText;
+import arcanestorage.ui.CategoryGrouping;
+import arcanestorage.ui.CategoryTreeForm;
+import arcanestorage.ui.StorageItemCell;
 import necesse.engine.gameLoop.tickManager.TickManager;
 import necesse.engine.input.Control;
 import necesse.engine.input.InputEvent;
@@ -53,7 +57,6 @@ import necesse.gfx.forms.components.FormLabel;
 import java.awt.Color;
 import necesse.gfx.forms.components.FormProgressBarText;
 import necesse.gfx.forms.components.FormTextInput;
-import necesse.gfx.forms.components.lists.FormItemList;
 import necesse.gfx.forms.components.localComponents.FormLocalLabel;
 import necesse.gfx.forms.components.localComponents.FormLocalTextButton;
 import necesse.gfx.forms.presets.containerComponent.ContainerFormSwitcher;
@@ -90,12 +93,9 @@ import necesse.inventory.recipe.RecipeFilter;
 /**
  * Client-side UI for the Storage Terminal.
  *
- * <p>Draws the network as one deduplicated grid of items rather than as the underlying
- * slots. {@link FormItemList} is the right primitive because it renders
- * {@code InventoryItem}s, not {@code ContainerSlot}s, which is exactly what an aggregated
- * view is: 60 iron spread over three units is one entry of 60 and has no single slot.
- *
- * <p>Clicking does nothing yet — withdraw and deposit are step 4.
+ * <p>Draws the network as one deduplicated, recursively categorised tree of items rather than as
+ * the underlying slots -- {@code InventoryItem}s, not {@code ContainerSlot}s, which is exactly what
+ * an aggregated view is: 60 iron spread over three units is one entry of 60 and has no single slot.
  */
 public class StorageTerminalContainerForm<T extends StorageTerminalContainer> extends ContainerFormSwitcher<T> {
 
@@ -225,6 +225,76 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
       }
    }
 
+   /**
+    * How deep the category tree goes, independent per tab and persisted like {@link SortMode}.
+    *
+    * <p>One dropdown, one enum, shared by both tabs' construction code -- but each tab keeps its own
+    * field and its own config entry, since Elias asked for one control per tab rather than one shared
+    * choice, the same way {@link SortMode} is storage's own and has no crafting equivalent.
+    *
+    * <p>{@link #apply} is the only place any of this matters to the data layer: {@code COARSE} and
+    * {@code FINE} are not two rendering modes, they are two different answers to "which category does
+    * this leaf belong to", fed into the same {@link CategoryGrouping}/{@link CategoryTreeForm} pipeline
+    * that already existed. {@code NONE} answers that question with the tree's own root for every leaf,
+    * which is what makes {@link CategoryTreeForm#buildTopLevel}'s root-bucket case fire at all -- see
+    * that method's own doc for why one flag is enough to turn the identical recursive walk into a bare,
+    * unchromed list rather than a second implementation.
+    */
+   private enum GroupingMode {
+      NONE("arcanestorage_grouping_none"),
+      COARSE("arcanestorage_grouping_coarse"),
+      FINE("arcanestorage_grouping_fine");
+
+      final String localeKey;
+
+      GroupingMode(String localeKey) {
+         this.localeKey = localeKey;
+      }
+
+      String settingValue() {
+         return this.name().toLowerCase();
+      }
+
+      /** The mode written as {@code settingValue}, or FINE for anything unrecognised -- today's default. */
+      static GroupingMode of(String value) {
+         for (GroupingMode mode : values()) {
+            if (mode.settingValue().equalsIgnoreCase(value)) {
+               return mode;
+            }
+         }
+
+         return FINE;
+      }
+
+      /**
+       * Which category {@code leaf} -- an entry's own real, full-depth category -- should be grouped
+       * under for this mode. {@code root} is the tree's own root ({@code ItemCategory.masterCategory}
+       * for storage, {@code ItemCategory.craftingMasterCategory} for crafting), used only by
+       * {@code NONE}, where every leaf is deliberately folded onto the same bucket.
+       */
+      ItemCategory apply(ItemCategory root, ItemCategory leaf) {
+         switch (this) {
+            case NONE:
+               return root;
+            case COARSE:
+               return topLevelAncestorOf(leaf);
+            case FINE:
+            default:
+               return leaf;
+         }
+      }
+   }
+
+   /** Walks up from {@code leaf} to its top-level ancestor (depth 1) -- {@code null} in, {@code null} out. */
+   private static ItemCategory topLevelAncestorOf(ItemCategory leaf) {
+      ItemCategory category = leaf;
+      while (category != null && category.depth > 1) {
+         category = category.parent;
+      }
+
+      return category;
+   }
+
    private static final int CELL_SIZE = 36;
 
    /**
@@ -277,29 +347,9 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
    /** Vanilla's slot pitch: FormContainerSlot draws 32px of slot with a 40px stride. */
    private static final int SLOT_PITCH = 40;
 
-   /**
-    * Two rows of source tickboxes, which is what fits above the recipe list without crowding it.
-    * A third row scrolls.
-    */
-   private static final int BENCH_STRIP_HEIGHT = 66;
-
-   /**
-    * Sized for the names rather than for a tidy count. {@code FormCheckBox.setText} *wraps* at its
-    * max width rather than truncating -- which is why the first version overflowed: at 106px wide,
-    * "Demonic Workstation" became two lines inside a 24px panel. At 156 the common names fit on one
-    * line and the few long ones ("Caveglow Alchemy Table") wrap into a panel tall enough to hold two.
-    * Truncating with an ellipsis was the alternative, and rejected: a station's name is the whole
-    * content of the control.
-    */
-   private static final int BENCH_PANEL_WIDTH = 156;
-
-   private static final int BENCH_PANEL_HEIGHT = 32;
 
    /** 32px recipe icon plus 2px padding either side, matching the base class's own arithmetic. */
    private static final int RECIPE_ELEMENT_SIZE = 36;
-
-   /** Vanilla's crafting bench depth, so sections here are as broad as a bench's. */
-   private static final int CRAFTING_CATEGORY_DEPTH = 1;
 
    private static final int CAPACITY_BAR_WIDTH = 180;
 
@@ -348,16 +398,6 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
          + FormInputSize.SIZE_24.height + PADDING
          + PADDING;
 
-   /**
-    * How deep the category menu goes before it stops offering submenus.
-    *
-    * <p>The tree is deeper than it is useful: {@code objects > furniture > chairs} is a helpful
-    * distinction, and the levels below that mostly separate wood types, which the search box
-    * answers better than a menu can. Three levels keeps the menu navigable and still reaches
-    * every leaf through the "everything in here" entry at each level.
-    */
-   private static final int CATEGORY_MENU_DEPTH = 3;
-
    /** The logistics tab's left column: the list of devices. The rest of the width is the selected one's rules. */
    private static final int DEVICE_LIST_WIDTH = 208;
 
@@ -383,7 +423,7 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
    private static final Color ISSUE_BACKING = new Color(150, 40, 36, 150);
 
    public final Form mainForm;
-   public final FormItemList itemList;
+   public final FormContentBox itemList;
    public final FormTextInput searchInput;
    public final TabbedFormPreset tabs;
 
@@ -468,8 +508,6 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
     */
    private final Set<Tech> hiddenBenches = new HashSet<>();
 
-   private final List<Form> benchPanels = new ArrayList<>();
-
    private boolean benchesChanged;
    public final FormProgressBarText capacityBar;
    public final FormLabel summaryLabel;
@@ -486,8 +524,8 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
 
    public FormContentIconButton stackButton;
 
-   /** Picks a category to filter by. Built from the game's own tree, so mods appear in it too. */
-   public ArcaneDropdown<ItemCategory> categoryButton;
+   /** Picks how deep the storage tab's category tree goes. Crafting keeps its own, separate control. */
+   public ArcaneDropdown<GroupingMode> groupingButton;
 
    /**
     * The live search filter, rebuilt whenever the query changes.
@@ -503,15 +541,6 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
    private ItemSearchTester searchTester = ItemSearchTester.constructSearchTester("");
 
    /**
-    * The chosen category, or {@code null} for every item.
-    *
-    * <p>Held as an {@link ItemCategory} rather than as a name because the filter is then a
-    * structural test — walk an item's category chain and look for this one — instead of a string
-    * comparison that would break in any language but English.
-    */
-   private ItemCategory categoryFilter;
-
-   /**
     * The current ordering. Not persisted anywhere: it resets when the terminal is reopened,
     * which keeps it out of config and save data until there is evidence a player misses it.
     */
@@ -524,6 +553,12 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
     * It also puts this next to the theme, which is the same kind of preference.
     */
    private SortMode sortMode = SortMode.of(ArcaneStorage.SETTINGS.sortMode);
+
+   /** Same persistence reasoning as {@link #sortMode}, its own config entry, storage's own choice. */
+   private GroupingMode storageGroupingMode = GroupingMode.of(ArcaneStorage.SETTINGS.storageGroupingMode);
+
+   /** Crafting's own grouping depth, independent of {@link #storageGroupingMode} -- see {@link GroupingMode}. */
+   private GroupingMode craftingGroupingMode = GroupingMode.of(ArcaneStorage.SETTINGS.craftingGroupingMode);
 
    private StackFilter stackFilter = StackFilter.ALL;
 
@@ -542,6 +577,25 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
     * reset the player's scroll position, so it is rebuilt only when the contents change.
     */
    private long shownSignature = Long.MIN_VALUE;
+
+   /**
+    * The storage tab's own data layer, shared with the crafting tab's mechanism but not its instance:
+    * a flat list of every aggregated stack, a pass/fail mask for the current search and stack filter,
+    * and a per-category position built from {@link #sortMode}. {@code categoryOf} routes every entry's
+    * real leaf category through {@link #storageGroupingMode}, so a grouping mode change needs no new
+    * {@link CategoryGrouping} instance -- only a position rebuild, exactly like a sort change.
+    */
+   private final CategoryGrouping<InventoryItem> storageGrouping = new CategoryGrouping<>(item ->
+         this.storageGroupingMode.apply(ItemCategory.masterCategory, ItemCategory.getItemsCategory(item.item)));
+
+   /**
+    * The storage tab's own category-fold state, keyed separately from crafting's so collapsing
+    * "Materials" in one tab doesn't fold something unrelated in the other -- same session-scoped
+    * mechanism as the crafting tab's, see the comment at its own construction site.
+    */
+   private final ItemCategoryExpandedSetting itemCategoryExpanded =
+         Settings.getItemCategoryExpandedSetting(ArcaneStorage.TERMINAL_STRING_ID + "storage",
+               ItemCategory.masterCategory, true);
 
    public StorageTerminalContainerForm(Client client, T container) {
       super(client, container);
@@ -594,32 +648,37 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
       this.searchInput.placeHolder = new LocalMessage("ui", "searchtip");
       this.searchInput.onChange(event -> this.setSearch(this.searchInput.getText()));
 
-      // The category picker gets its own row rather than a place on the crowded control row.
-      // It is a dropdown and not the row of icon buttons this kind of UI usually has, and that is
-      // a deliberate consequence of using Necesse's taxonomy instead of Terraria's: the game has
-      // eight top-level categories and over a hundred in total, so any fixed set of icon buttons
-      // would have to invent buckets and then decide, wrongly, which real category belongs in
-      // which. The dropdown carries the game's own names and its own nesting, gains any category a
-      // mod adds for free, and needs no art.
+      // This row used to also hold the category dropdown -- removed once the tree replaced it, since
+      // filtering by category and browsing by category were doing the same job through two controls.
+      // The category filter dropdown used to sit here; removed once the tree replaced it, since
+      // filtering by category and browsing by category were doing the same job through two controls.
+      // Search alone still reaches everything that dropdown did: ItemSearchTester already matches a
+      // category name against an item's whole category chain, so "armor" or "food" typed into the
+      // search box finds the same items a category pick used to. What replaces it in this same row is
+      // a different control entirely: not a filter, but how deep the tree itself goes.
       int categoryHeight = FormInputSize.SIZE_20.height;
       int categoryY = flow.next(categoryHeight + PADDING);
-      this.categoryButton = this.mainForm
+
+      this.groupingButton = this.mainForm
          .addComponent(
-            new ArcaneDropdown<ItemCategory>(PADDING, categoryY, FormInputSize.SIZE_20, ButtonColor.BASE, 150)
+            new ArcaneDropdown<GroupingMode>(PADDING, categoryY, FormInputSize.SIZE_20, ButtonColor.BASE, 140)
          );
-      this.categoryButton.setSelected(null, new LocalMessage("ui", "arcanestorage_category_all"));
-      this.categoryButton.choices.add(null, new LocalMessage("ui", "arcanestorage_category_all"));
-      addCategoryOptions(this.categoryButton.choices, ItemCategory.masterCategory, 1);
-      this.categoryButton.onSelected(event -> {
-         this.categoryFilter = event.value;
-         this.refreshList();
+      for (GroupingMode mode : GroupingMode.values()) {
+         this.groupingButton.choices.add(mode, new LocalMessage("ui", mode.localeKey));
+      }
+      this.groupingButton.setSelected(this.storageGroupingMode, new LocalMessage("ui", this.storageGroupingMode.localeKey));
+      this.groupingButton.onSelected(event -> {
+         this.storageGroupingMode = event.value;
+         ArcaneStorage.SETTINGS.storageGroupingMode = event.value.settingValue();
+         Settings.saveClientSettings();
+         this.resortStorageTree();
       });
 
       // Right-aligned on the category row, which is otherwise empty across most of an 18-column
       // form. It answers a question the interface could not previously answer: search and category
       // both hide things, and without a count there is no way to tell "the network has none" from
-      // "the filter removed them all". Set from inside addAllItems, so it counts the list that was
-      // actually built rather than re-deriving the filter and risking the two disagreeing.
+      // "the filter removed them all". Set from inside rebuildStorageTree, so it counts the list that
+      // was actually built rather than re-deriving the filter and risking the two disagreeing.
       this.summaryLabel = this.mainForm
          .addComponent(new FormLabel("", ArcaneText.body(this, 12), 1,
                this.mainForm.getWidth() - PADDING, categoryY + 4));
@@ -634,110 +693,35 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
 
       this.itemList = this.mainForm
          .addComponent(
-            new FormItemList(
+            new FormContentBox(
                   PADDING,
                   flow.next(ROWS * CELL_SIZE + GRID_SCROLL_BUTTONS),
                   COLUMNS * CELL_SIZE,
-                  ROWS * CELL_SIZE + GRID_SCROLL_BUTTONS,
-                  FormItemList.UpdateMode.WAIT_FULl) {
-               @Override
-               public void addAllItems(List<InventoryItem> list) {
-                  // Filtering here rather than in the container keeps search a pure view
-                  // concern: the client already holds every slot, so there is nothing to ask
-                  // the server for and no packet to wait on while typing.
-                  //
-                  // It is also safe against the withdraw path by construction. A withdrawal
-                  // sends the item and an amount, never a network slot index, and the server
-                  // re-resolves it against its own units -- so a filtered view cannot make a
-                  // click land on the wrong item.
-                  GameBlackboard blackboard = new GameBlackboard();
-                  for (InventoryItem item : StorageTerminalContainerForm.this.aggregated) {
-                     if (StorageTerminalContainerForm.this.matchesCategory(item)
-                           && StorageTerminalContainerForm.this.stackFilter.accepts(item)
-                           && StorageTerminalContainerForm.this.searchTester.matches(item, client.getPlayer(), blackboard)) {
-                        list.add(item);
-                     }
-                  }
-
-                  list.sort(StorageTerminalContainerForm.this.sortMode.comparator());
-                  StorageTerminalContainerForm.this.updateSummary(list);
-               }
-
-               @Override
-               public void onItemClicked(InventoryItem item, InputEvent event) {
-                  // Right clicks reach here as well as left: FormGeneralList dispatches any
-                  // isMouseClickEvent to the element under the mouse, so the button has to be
-                  // read rather than assumed.
-                  boolean rightClick = event.getID() == InputID.RIGHT_CLICK;
-
-                  // Holding something means the click is an insert, whatever it landed on. That is
-                  // the inventory convention -- clicking a slot while holding a stack puts it down
-                  // -- and it means a player never has to find empty space to deposit into.
-                  if (StorageTerminalContainerForm.this.isHoldingItem()) {
-                     container.depositCursorAction.runAndSend(rightClick ? 1 : -1);
-                     event.use();
-                     return;
-                  }
-
-                  if (rightClick) {
-                     // Half a stack, not half the network's supply. The cursor cannot hold more
-                     // than one stack, so "half" is measured against what one click could pick up.
-                     // A non-stackable item has a stack of one, which makes this a whole item and
-                     // left and right identical -- as they are on any vanilla slot.
-                     int oneStack = Math.min(item.getAmount(), item.item.getStackSize());
-                     container.withdrawAction.runAndSend(item, Math.max(1, oneStack / 2), true);
-                     event.use();
-                     return;
-                  }
-
-                  // Plain click picks up onto the cursor, INV_QUICK_MOVE (shift by default)
-                  // transfers into the inventory.
-                  boolean quickMove = Control.INV_QUICK_MOVE.isDown();
-                  container.withdrawAction
-                     .runAndSend(item, Math.min(item.getAmount(), item.item.getStackSize()), !quickMove);
-                  event.use();
-               }
-
+                  ROWS * CELL_SIZE + GRID_SCROLL_BUTTONS) {
+               /**
+                * Deposits when a click lands on the box but not on any leaf. {@code handleInputEvent}
+                * runs the leaves first via the normal component dispatch, and each leaf marks the event
+                * used if the click landed on it -- so by the time this override's own check runs, an
+                * unused click genuinely hit empty space between or below the icons, the same guarantee
+                * {@code FormItemList}'s own equivalent override had.
+                */
                @Override
                public void handleInputEvent(InputEvent event, TickManager tickManager, PlayerMob perspective) {
                   super.handleInputEvent(event, tickManager, perspective);
 
-                  // Deposit when the click landed on the grid but not on an item. super runs first
-                  // and marks the event used if an element or a scroll button took it, so this only
-                  // sees genuinely empty space -- which is what makes "click anywhere" safe to add
-                  // without stealing clicks from anything.
                   if (event.isUsed() || !event.isMouseClickEvent() || !event.state) {
                      return;
                   }
 
-                  if (!StorageTerminalContainerForm.this.isHoldingItem() || !this.isMouseWithin(event)) {
+                  if (!StorageTerminalContainerForm.this.isHoldingItem() || !this.isMouseOver(event)) {
                      return;
                   }
 
                   container.depositCursorAction.runAndSend(event.getID() == InputID.RIGHT_CLICK ? 1 : -1);
                   event.use();
                }
-
-               private boolean isMouseWithin(InputEvent event) {
-                  // hudX/hudY rather than window coordinates, because that is the space component
-                  // positions and hitboxes are expressed in -- see FormComponent.isMouseOver.
-                  return event.pos.hudX >= this.getX()
-                        && event.pos.hudX < this.getX() + this.width
-                        && event.pos.hudY >= this.getY()
-                        && event.pos.hudY < this.getY() + this.height;
-               }
             }
          );
-
-      // The list must not sort itself, or the sort button is decorative.
-      //
-      // FormItemList defaults `sorted` to true, and in WAIT_FULl mode it builds its elements with
-      // insertSortedList and then sorts them again, both by Comparator.comparing(i -> i.item) -- that is
-      // InventoryItem.compareTo, category then display name. It does that to whatever addAllItems produced, so the
-      // comparator chosen above was applied to a list whose order was then thrown away. The visible order was always
-      // the engine's, which is why GROUP looked correct: GROUP *is* naturalOrder, the same comparator. NAME and
-      // AMOUNT did nothing at all, and no amount of rebuilding on click could have made them.
-      this.itemList.setSorted(false);
 
       flow.next(PADDING);
 
@@ -802,7 +786,7 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
       this.sortButton.onClicked(event -> {
          this.sortMode = this.sortMode.next();
          this.sortButton.setTooltips(this.sortTooltip());
-         this.refreshList();
+         this.resortStorageTree();
 
          // Written on the click rather than on close, which is what vanilla's own crafting form does for its
          // only-craftable and highlight checkboxes (CraftingStationContainerForm:105 and :132). A click is
@@ -846,7 +830,7 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
       this.stackButton.onClicked(event -> {
          this.stackFilter = this.stackFilter.next();
          this.stackButton.setTooltips(this.stackTooltip());
-         this.refreshList();
+         this.refilterStorageTree();
       });
 
       controlX -= controlHeight + PADDING;
@@ -961,20 +945,18 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
       // Primed here because refreshList() reads it, and the first draw has not happened yet.
       this.aggregated = container.getAggregatedItems();
 
-      // Must happen before the form can receive input, not lazily in draw().
-      // FormItemList.reset() does not call super.reset(), so FormGeneralList.elements stays
-      // null from construction until the first updateList — and input events are handled
-      // earlier in the frame than any draw, so a click on the first frame would hit null.
+      // Must happen before the form can receive input, not lazily in draw(): input is handled
+      // earlier in the frame than any draw, so a click on the first frame would otherwise hit an
+      // empty box.
       this.refreshList();
    }
 
    /**
-    * Which section a recipe belongs in, by vanilla's own rule.
+    * Which category a recipe's own leaf belongs to, by vanilla's own rule -- no depth walk, unlike the
+    * flat grouping this replaced. The recursive tree renders however deep the real category goes, the same
+    * way the creative menu does for items.
     *
-    * <p>A recipe may name its own crafting category; otherwise the category comes from the result
-    * item and is walked up to the depth a crafting bench uses. Depth 1 is what
-    * {@code CraftingStationObject.getCraftingCategoryDepth} returns, so the terminal's sections are
-    * the same breadth a bench's are -- a deeper cut would give a section per handful of recipes.
+    * <p>A recipe may name its own crafting category; otherwise the category comes from the result item.
     *
     * <p>Falls back to the crafting tree's own root rather than returning null. Vanilla's matching code
     * ({@code CraftingStationContainerForm:339-341}) has the same gap and gets away with it because every
@@ -982,10 +964,7 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
     * {@code ItemCategoryManager.setItemCategory}, which every one of our own items and objects goes
     * through via {@code ArcaneStorage.registerObject}/{@code registerItem}. A null only reaches here for
     * another mod's recipe whose result item was never registered with a crafting category, but a
-    * terminal spans every bench at once and so is the first place in the game likely to meet one. Without
-    * this, the null entered {@code ordered.sort(null)} (natural ordering, so {@code null.compareTo(...)})
-    * and {@code category.displayName.translate()} unconditionally -- both a guaranteed
-    * {@code NullPointerException} the moment a categoryless recipe showed up.
+    * terminal spans every bench at once and so is the first place in the game likely to meet one.
     */
    private static ItemCategory craftingCategoryOf(ContainerRecipe recipe) {
       ItemCategory category = recipe.recipe.getCraftingCategory();
@@ -994,10 +973,6 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
       }
 
       category = ItemCategory.craftingManager.getItemsCategory(recipe.recipe.resultItem.item);
-      while (category != null && category.parent != null && category.depth > CRAFTING_CATEGORY_DEPTH) {
-         category = category.parent;
-      }
-
       return category == null ? ItemCategory.craftingManager.masterCategory : category;
    }
 
@@ -1022,50 +997,47 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
    }
 
    /**
-    * Rebuilds the source tickboxes from the installed stations.
+    * Rebuilds the source rows from the installed stations.
     *
     * <p>Sources are {@code Tech}s rather than bench items, because that is what a recipe carries, and
     * it makes tiering read correctly: a Demonic Workstation installs two techs and so contributes two
-    * tickboxes, which is the distinction a player wants when hunting for a recipe. Hand recipes get a
-    * box like any other, labelled with the game's own name for that tech -- "Inventory" -- so nothing
+    * rows, which is the distinction a player wants when hunting for a recipe. Hand recipes get a row
+    * like any other, labelled with the game's own name for that tech -- "Inventory" -- so nothing
     * here special-cases them.
     *
     * <p>New sources arrive ticked. Anything the player unticked stays unticked, so installing a
     * second bench does not quietly undo a choice they made about the first.
     */
-   private void rebuildBenchStrip(FormContentBox box, List<Tech> sources) {
-      for (Form panel : this.benchPanels) {
-         box.removeComponent(panel);
-      }
-
-      this.benchPanels.clear();
+   private void rebuildSourceRows(ArcaneCheckDropdown sourcesButton, List<Tech> sources) {
       this.hiddenBenches.retainAll(sources);
 
-      int columns = Math.max(1, (box.getWidth() - box.getScrollBarWidth()) / BENCH_PANEL_WIDTH);
-      int rows = (sources.size() + columns - 1) / columns;
-
-      for (int i = 0; i < sources.size(); i++) {
-         Tech source = sources.get(i);
-         Form panel = box.addComponent(new Form(BENCH_PANEL_WIDTH - 2, BENCH_PANEL_HEIGHT - 2));
-      panel.setBackground(ArcanePanel.of());
-         panel.setPosition(i % columns * BENCH_PANEL_WIDTH, i / columns * BENCH_PANEL_HEIGHT);
-
-         FormCheckBox tick = panel.addComponent(new FormCheckBox(sourceLabel(source), 4, 4,
-               BENCH_PANEL_WIDTH - 12, !this.hiddenBenches.contains(source)));
-         tick.onClicked(event -> {
-            if (event.from.checked) {
-               this.hiddenBenches.remove(source);
-            } else {
-               this.hiddenBenches.add(source);
+      List<ArcaneCheckDropdown.Row> rows = new ArrayList<>();
+      for (Tech source : sources) {
+         rows.add(new ArcaneCheckDropdown.Row() {
+            @Override
+            public String label() {
+               return sourceLabel(source);
             }
 
-            this.benchesChanged = true;
-         });
+            @Override
+            public boolean isChecked() {
+               return !StorageTerminalContainerForm.this.hiddenBenches.contains(source);
+            }
 
-         this.benchPanels.add(panel);
+            @Override
+            public void setChecked(boolean checked) {
+               if (checked) {
+                  StorageTerminalContainerForm.this.hiddenBenches.remove(source);
+               } else {
+                  StorageTerminalContainerForm.this.hiddenBenches.add(source);
+               }
+
+               StorageTerminalContainerForm.this.benchesChanged = true;
+            }
+         });
       }
 
-      box.setContentBox(new Rectangle(box.getWidth() - box.getScrollBarWidth(), rows * BENCH_PANEL_HEIGHT));
+      sourcesButton.setRows(rows);
    }
 
    /**
@@ -1168,29 +1140,42 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
       search.rightClickToClear = true;
       search.onChange(event -> filter.setSearchFilter(search.getText()));
 
-      // One tickbox per source, all on, in a strip above the list -- Elias's design, replacing a
-      // dropdown I had put here first. Two reasons it is better: several benches can be shown at
-      // once, which a single-select dropdown cannot express, and every source is visible without
-      // opening a menu, so the strip doubles as "what can this terminal build from".
-      //
-      // In a scrolling box because the count is not bounded by the ten slots: an upgraded bench
-      // reports the lower techs too, so ten benches can be twenty-odd sources.
       // Session-scoped, exactly like vanilla's: Settings keeps these in a map that is never written
       // to the settings file, so which sections a player left open survives reopening the terminal
       // and not restarting the game. Keyed on our own string ID so it cannot collide with a bench's.
       ItemCategoryExpandedSetting expanded = Settings.getItemCategoryExpandedSetting(
             ArcaneStorage.TERMINAL_STRING_ID + "crafting", ItemCategory.craftingMasterCategory, true);
 
-      FormContentBox benchBox = form.addComponent(
-            new FormContentBox(PADDING, flow.next(BENCH_STRIP_HEIGHT + PADDING), FORM_WIDTH - PADDING * 2,
-                  BENCH_STRIP_HEIGHT));
+      // Top-left, matching where storage's own grouping control sits -- room for it made by folding
+      // the source tickbox strip that used to occupy this same area into the dropdown beside it.
+      int controlsHeight = FormInputSize.SIZE_20.height;
+      int controlsY = flow.next(controlsHeight + PADDING);
+
+      ArcaneDropdown<GroupingMode> groupingButton = form.addComponent(
+            new ArcaneDropdown<GroupingMode>(PADDING, controlsY, FormInputSize.SIZE_20, ButtonColor.BASE, 140));
+      for (GroupingMode mode : GroupingMode.values()) {
+         groupingButton.choices.add(mode, new LocalMessage("ui", mode.localeKey));
+      }
+      groupingButton.setSelected(this.craftingGroupingMode, new LocalMessage("ui", this.craftingGroupingMode.localeKey));
+
+      // What used to be one tickbox per source, all on, in a strip above the list -- Elias's own
+      // design at the time, and correct for what it needed to do: several benches can be shown at
+      // once, which a single-select dropdown cannot express, and every source was visible without
+      // opening a menu. What changed his mind was cost, not correctness: a strip wide enough for
+      // "Demonic Workstation" and tall enough for two rows took real height away from the list for
+      // every player, whether or not they had ever wanted to hide a source. A dropdown keeps the
+      // same multi-select shape -- ArcaneCheckDropdown ticks independently and never closes on a
+      // click the way a single-select ArcaneDropdown does -- while costing one row only when opened.
+      ArcaneCheckDropdown sourcesButton = form.addComponent(
+            new ArcaneCheckDropdown(new LocalMessage("ui", "arcanestorage_sourcesbutton"), PADDING + 150,
+                  controlsY, 140, FormInputSize.SIZE_20, ButtonColor.BASE));
 
       // Filled here as well as from draw, because input is handled earlier in the frame than any
       // draw: a strip built lazily would be unclickable on the frame it appeared.
       List<Tech> initialSources = new ArrayList<>();
       initialSources.add(RecipeTechRegistry.NONE);
       initialSources.addAll(container.getInstalledTechs());
-      this.rebuildBenchStrip(benchBox, initialSources);
+      this.rebuildSourceRows(sourcesButton, initialSources);
 
       // Sits over the top of the list area rather than in the flow, because it is only ever visible
       // when the list is empty -- and an empty list leaves that space blank anyway.
@@ -1269,7 +1254,7 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
 
                   if (!sources.equals(this.knownBenches)) {
                      this.knownBenches = sources;
-                     StorageTerminalContainerForm.this.rebuildBenchStrip(benchBox, sources);
+                     StorageTerminalContainerForm.this.rebuildSourceRows(sourcesButton, sources);
                      this.updateRecipes();
                   }
 
@@ -1286,98 +1271,71 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
                }
 
                /**
-                * Lays the recipes out in collapsible category sections, the way a vanilla bench does.
+                * Lays the recipes out in a recursive category tree, the same structure and component
+                * ({@link arcanestorage.ui.CategoryTreeForm}) the storage tab's own grouping uses.
                 *
                 * <p>Overriding {@code updateList} and nothing else is what makes this affordable.
-                * Vanilla's own categorised view lives in {@code CraftingStationContainerForm}'s
-                * {@code protected} inner classes, which cannot be instantiated from here -- but the
-                * valuable part is not the layout, it is {@link FormContainerRecipe}: can-craft state,
-                * the per-ingredient have/missing tooltip, the "3 of 5" count and click-to-craft. Those
-                * components are built exactly as the base class builds them, including the canCraft
-                * override, so everything above the positions is unchanged and
-                * {@code forceUpdateCraftable} keeps working on the list this leaves behind.
+                * {@link FormContainerRecipe} -- can-craft state, the per-ingredient have/missing
+                * tooltip, the "3 of 5" count and click-to-craft -- is built exactly as the base class
+                * builds it, including the {@code canCraft} override, so everything above the positions
+                * is unchanged and {@code forceUpdateCraftable} keeps working on the list this leaves
+                * behind.
+                *
+                * <p>{@code grouping}'s mask is {@code cr.shouldShow}, not our own search or
+                * craftable-only filter -- those already ran upstream, inside {@code streamAllRecipes()}'s
+                * call to {@code filter.getFilteredRecipes(...)}, so a search keystroke already produces a
+                * new {@code allRecipes} before this method is reached. There is nothing cheaper left to
+                * skip here: {@code shouldShow} is the one thing that can still change without a full
+                * {@code updateRecipes()} call, and it is rare enough (only vanilla's own hidden-recipe
+                * rule) that giving it its own fast path would add a second update method for a case that
+                * almost never fires.
                 */
                @Override
                public void updateList() {
-                  if (!ArcaneStorage.SETTINGS.groupCraftingByCategory) {
-                     super.updateList();
-                     return;
-                  }
-
                   this.clearComponents();
                   Container c = client.getContainer();
                   this.recipeComponents = new ArrayList<>();
 
-                  LinkedHashMap<ItemCategory, List<CraftableRecipe>> byCategory = new LinkedHashMap<>();
-                  List<CraftableRecipe> shownRecipes = new ArrayList<>();
-                  for (CraftableRecipe cr : this.allRecipes) {
-                     if (cr.shouldShow) {
-                        shownRecipes.add(cr);
-                     }
+                  boolean[] mask = new boolean[this.allRecipes.size()];
+                  for (int i = 0; i < this.allRecipes.size(); i++) {
+                     mask[i] = this.allRecipes.get(i).shouldShow;
                   }
 
-                  // Sorted so sections keep a stable order between rebuilds; ItemCategory's own
-                  // ordering is what the creative menu and the crafting benches use.
-                  List<ItemCategory> ordered = new ArrayList<>();
-                  for (CraftableRecipe cr : shownRecipes) {
-                     ItemCategory category = craftingCategoryOf(cr.recipe);
-                     if (!byCategory.containsKey(category)) {
-                        byCategory.put(category, new ArrayList<>());
-                        ordered.add(category);
-                     }
+                  // Craftable first, then alphabetical -- fixed, not a player choice, unlike storage's own
+                  // SortMode. A recipe list is a to-do list as much as an index; what you can build right
+                  // now is the useful half of it, and putting that half first needs no toggle to be right
+                  // on every visit.
+                  Comparator<CraftableRecipe> withinGroupOrder =
+                        Comparator.<CraftableRecipe, Boolean>comparing(cr -> !cr.canCraft.canCraft())
+                              .thenComparing(cr -> cr.recipe.recipe.resultItem.getItemDisplayName().toLowerCase());
+                  this.grouping.onEntriesChanged(this.allRecipes, mask, withinGroupOrder);
 
-                     byCategory.get(category).add(cr);
-                  }
+                  int height = CategoryTreeForm.buildTopLevel(this, this.grouping,
+                        ItemCategory.craftingMasterCategory, expanded,
+                        (cr, x, y) -> {
+                           FormContainerRecipe comp = new FormContainerRecipe(client, c, cr.recipe, x, y) {
+                              @Override
+                              public CanCraft getCanCraft() {
+                                 return cr.canCraft;
+                              }
+                           };
+                           this.recipeComponents.add(comp);
+                           return comp;
+                        },
+                        RECIPE_ELEMENT_SIZE, this.getWidth() - this.getScrollBarWidth(),
+                        StorageTerminalContainerForm.this.craftingGroupingMode != GroupingMode.NONE,
+                        newHeight -> {
+                           this.setContentBox(new Rectangle(this.getWidth(), newHeight));
+                           WindowManager.getWindow().submitNextMoveEvent();
+                        });
 
-                  ordered.sort(null);
-
-                  int availableWidth = this.getWidth() - this.getScrollBarWidth();
-                  int elementWidth = RECIPE_ELEMENT_SIZE;
-                  int perRow = Math.max(1, availableWidth / elementWidth);
-                  int y = 0;
-
-                  for (ItemCategory category : ordered) {
-                     List<CraftableRecipe> recipes = byCategory.get(category);
-                     ItemCategoryExpandedSetting setting = expanded.getChild(category);
-                     boolean isExpanded = setting == null || setting.isExpanded();
-
-                     // The header carries the count, so a collapsed section still says how much is
-                     // inside -- otherwise collapsing hides the information you collapsed to find.
-                     FormTextButton header = this.addComponent(new FormTextButton(
-                           (isExpanded ? "- " : "+ ") + category.displayName.translate() + "  (" + recipes.size() + ")",
-                           0, y, availableWidth, FormInputSize.SIZE_20, ButtonColor.BASE));
-                     header.onClicked(event -> {
-                        if (setting != null) {
-                           setting.setExpanded(!setting.isExpanded());
-                        }
-
-                        this.updateList();
-                     });
-
-                     y += FormInputSize.SIZE_20.height + 2;
-                     if (!isExpanded) {
-                        continue;
-                     }
-
-                     for (int i = 0; i < recipes.size(); i++) {
-                        CraftableRecipe cr = recipes.get(i);
-                        FormContainerRecipe comp = this.addComponent(
-                              new FormContainerRecipe(client, c, cr.recipe, 0, 0) {
-                                 @Override
-                                 public CanCraft getCanCraft() {
-                                    return cr.canCraft;
-                                 }
-                              });
-                        comp.setPosition(i % perRow * elementWidth + 2, y + i / perRow * elementWidth);
-                        this.recipeComponents.add(comp);
-                     }
-
-                     y += (recipes.size() + perRow - 1) / perRow * elementWidth + 4;
-                  }
-
-                  this.setContentBox(new Rectangle(this.getWidth(), y));
+                  this.setContentBox(new Rectangle(this.getWidth(), height));
                   WindowManager.getWindow().submitNextMoveEvent();
                }
+
+               private final CategoryGrouping<CraftableRecipe> grouping = new CategoryGrouping<>(cr ->
+                     StorageTerminalContainerForm.this.craftingGroupingMode.apply(
+                           ItemCategory.craftingMasterCategory, craftingCategoryOf(cr.recipe)));
             });
 
       // Unticked on every open: showing everything is the honest default, because a list narrowed to
@@ -1391,72 +1349,14 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
             100);
       onlyCraftable.onClicked(event -> filter.setCraftableOnly(event.from.checked));
 
-      // This one *does* persist, unlike the filters, because it is a preference about how the
-      // interface looks rather than a filter over what it shows -- you set it once and expect it to
-      // stay. It goes through the engine's own mod settings file; saveClientSettings writes mod
-      // settings too.
-      FormLocalCheckBox groupByCategory = form.addComponent(
-            new FormLocalCheckBox("ui", "arcanestorage_group_by_category", PADDING + 170,
-                  FORM_HEIGHT - 16 - PADDING, ArcaneStorage.SETTINGS.groupCraftingByCategory),
-            100);
-      groupByCategory.onClicked(event -> {
-         ArcaneStorage.SETTINGS.groupCraftingByCategory = event.from.checked;
+      groupingButton.onSelected(event -> {
+         this.craftingGroupingMode = event.value;
+         ArcaneStorage.SETTINGS.craftingGroupingMode = event.value.settingValue();
          Settings.saveClientSettings();
          craftingList.updateList();
       });
 
       return form;
-   }
-
-   /**
-    * Fills a dropdown level with a category's children, recursing while depth allows.
-    *
-    * <p>A category with children of its own becomes a submenu whose first entry selects the
-    * category itself, so "everything under Materials" stays one click away from where its
-    * subdivisions are. Without that entry a parent category would be visible and unselectable,
-    * which is the usual way a nested menu becomes annoying.
-    *
-    * <p>Children are sorted with the game's own {@link ItemCategory} ordering, which is what the
-    * creative menu uses, so the menu reads in the order a player has already seen elsewhere.
-    */
-   private static void addCategoryOptions(
-         ArcaneDropdown<ItemCategory>.Options options, ItemCategory parent, int depth) {
-      List<ItemCategory> children = new ArrayList<>();
-      parent.getChildren().forEach(children::add);
-      children.sort(Comparator.naturalOrder());
-
-      for (ItemCategory category : children) {
-         boolean hasChildren = category.getChildren().iterator().hasNext();
-         if (hasChildren && depth < CATEGORY_MENU_DEPTH) {
-            ArcaneDropdown<ItemCategory>.Options sub = options.addSub(category.displayName);
-            sub.add(category, new LocalMessage("ui", "arcanestorage_category_everything", "category", category.displayName.translate()));
-            addCategoryOptions(sub, category, depth + 1);
-         } else {
-            options.add(category, category.displayName);
-         }
-      }
-   }
-
-   /**
-    * Whether an item belongs to the chosen category, directly or through any ancestor.
-    *
-    * <p>Walking up from the item's own category is what makes picking a parent mean "and
-    * everything beneath it", and it matches how {@code Item.matchesSearch} treats categories —
-    * so the picker and the search box agree about what a category contains rather than each
-    * having its own idea.
-    */
-   private boolean matchesCategory(InventoryItem item) {
-      if (this.categoryFilter == null) {
-         return true;
-      }
-
-      for (ItemCategory category = ItemCategory.getItemsCategory(item.item); category != null; category = category.parent) {
-         if (category.id == this.categoryFilter.id) {
-            return true;
-         }
-      }
-
-      return false;
    }
 
    /** Names the current ordering, so one cycling button does not leave the player guessing. */
@@ -1487,11 +1387,12 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
     * else in the game rather than something a player has to learn twice: terms separated by
     * {@code |} are alternatives, and a term prefixed with {@code @} searches tooltips as well.
     * Matching covers the item's string ID, its display name, and every category above it — so
-    * a query like "sword" or "food" filters by category without a category picker existing yet.
+    * a query like "sword" or "food" reaches the same items a category pick used to, which is
+    * why the tree has no separate category filter of its own.
     */
    private void setSearch(String query) {
       this.searchTester = ItemSearchTester.constructSearchTester(query);
-      this.refreshList();
+      this.refilterStorageTree();
    }
 
    /**
@@ -1519,14 +1420,22 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
       return cursor != null && !cursor.isClear();
    }
 
-   private void updateSummary(List<InventoryItem> shown) {
+   /**
+    * Writes kind/item counts into the footer, read directly off {@link #storageGrouping} rather than
+    * off a filtered list a caller would otherwise have to build twice -- {@link CategoryGrouping}
+    * already holds exactly {@code flat}/{@code mask} pair this needs, one pass over both.
+    */
+   private void updateSummary() {
       long items = 0L;
-      for (InventoryItem item : shown) {
-         items += item.getAmount();
+      int kinds = 0;
+      for (int i = 0; i < this.storageGrouping.flat().size(); i++) {
+         if (this.storageGrouping.passes(i)) {
+            kinds++;
+            items += this.storageGrouping.get(i).getAmount();
+         }
       }
 
-      int kinds = shown.size();
-      int available = this.aggregated == null ? kinds : this.aggregated.size();
+      int available = this.storageGrouping.flat().size();
       this.summaryLabel.setText(kinds == available
             ? Localization.translate("ui", "arcanestorage_summary",
                   "kinds", String.valueOf(kinds), "items", String.valueOf(items))
@@ -1543,19 +1452,110 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
    }
 
    /**
-    * Rebuilds the grid from the network's current contents.
+    * Rebuilds the grouping and the tree from the network's current contents -- the one path that
+    * touches all three of {@link CategoryGrouping}'s axes, because a changed entry list can add a
+    * category that did not exist a moment ago or remove the last item from one that did, which
+    * neither a filter change nor a sort change can do on their own.
     *
-    * <p>Driven by a content signature rather than run every frame, because rebuilding
-    * resets the player's scroll position. It cannot be driven by
-    * {@code populateIfNotAlready} alone either: that only refills when the list is empty,
-    * so an empty network would rebuild on every frame while a full one would never rebuild
-    * at all.
+    * <p>Driven by a content signature rather than run every frame, for the same reason the grid
+    * this replaced was: rebuilding resets the player's scroll position.
     */
    private void refreshList() {
       this.shownSignature = signatureOf(this.aggregated);
-      this.itemList.reset();
-      this.itemList.populateIfNotAlready();
+      this.storageGrouping.onEntriesChanged(this.aggregated, this.currentMask(), this.sortMode.comparator());
+      this.rebuildStorageTree();
       this.updateCapacityLabel();
+   }
+
+   /** Same entries, a new search query or stack filter -- categories and ordering are untouched. */
+   private void refilterStorageTree() {
+      this.storageGrouping.onFilterChanged(this.currentMask());
+      this.rebuildStorageTree();
+   }
+
+   /**
+    * Same entries, same filter, only the position within (and now which) categories changes -- either
+    * because the sort button changed the within-group order, or because the grouping dropdown changed
+    * what {@code categoryOf} itself resolves to. Both are position-only changes as far as
+    * {@link CategoryGrouping} is concerned: {@code onSortChanged} recomputes {@code position} from
+    * {@code categoryOf} and a comparator, and {@code categoryOf} reading {@link #storageGroupingMode}
+    * live is exactly what makes a grouping-mode change need nothing more than this same call.
+    */
+   private void resortStorageTree() {
+      this.storageGrouping.onSortChanged(this.sortMode.comparator());
+      this.rebuildStorageTree();
+   }
+
+   /** Whether each entry in {@link #aggregated} currently passes the search box and the stack filter. */
+   private boolean[] currentMask() {
+      GameBlackboard blackboard = new GameBlackboard();
+      boolean[] mask = new boolean[this.aggregated.size()];
+      for (int i = 0; i < this.aggregated.size(); i++) {
+         InventoryItem item = this.aggregated.get(i);
+         mask[i] = this.stackFilter.accepts(item)
+               && this.searchTester.matches(item, this.client.getPlayer(), blackboard);
+      }
+
+      return mask;
+   }
+
+   /**
+    * Lays the tree out from whatever {@link #storageGrouping} currently says is visible, and updates
+    * the summary label and the box's own scrollable height to match -- the part shared by all three
+    * of the methods above, regardless of which of {@link CategoryGrouping}'s update methods ran first.
+    */
+   private void rebuildStorageTree() {
+      this.itemList.clearComponents();
+      int height = CategoryTreeForm.buildTopLevel(this.itemList, this.storageGrouping,
+            ItemCategory.masterCategory, this.itemCategoryExpanded,
+            (item, x, y) -> new StorageItemCell(item, x, y, this::onItemClicked),
+            CELL_SIZE - 4, this.itemList.getWidth() - this.itemList.getScrollBarWidth(),
+            this.storageGroupingMode != GroupingMode.NONE,
+            newHeight -> {
+               this.itemList.setContentBox(new Rectangle(this.itemList.getWidth(), newHeight));
+               WindowManager.getWindow().submitNextMoveEvent();
+            });
+
+      this.itemList.setContentBox(new Rectangle(this.itemList.getWidth(), height));
+      this.updateSummary();
+   }
+
+   /**
+    * Dispatches a click on one leaf cell -- ported unchanged from {@code FormItemList}'s own
+    * {@code onItemClicked}, which this replaces.
+    */
+   private void onItemClicked(InventoryItem item, InputEvent event) {
+      T container = this.getContainer();
+
+      // Right clicks reach here as well as left: the cell forwards any mouse click event it's
+      // under, so the button has to be read rather than assumed.
+      boolean rightClick = event.getID() == InputID.RIGHT_CLICK;
+
+      // Holding something means the click is an insert, whatever it landed on. That is the
+      // inventory convention -- clicking a slot while holding a stack puts it down -- and it
+      // means a player never has to find empty space to deposit into.
+      if (this.isHoldingItem()) {
+         container.depositCursorAction.runAndSend(rightClick ? 1 : -1);
+         event.use();
+         return;
+      }
+
+      if (rightClick) {
+         // Half a stack, not half the network's supply. The cursor cannot hold more than one
+         // stack, so "half" is measured against what one click could pick up. A non-stackable
+         // item has a stack of one, which makes this a whole item and left and right identical
+         // -- as they are on any vanilla slot.
+         int oneStack = Math.min(item.getAmount(), item.item.getStackSize());
+         container.withdrawAction.runAndSend(item, Math.max(1, oneStack / 2), true);
+         event.use();
+         return;
+      }
+
+      // Plain click picks up onto the cursor, INV_QUICK_MOVE (shift by default) transfers into
+      // the inventory.
+      boolean quickMove = Control.INV_QUICK_MOVE.isDown();
+      container.withdrawAction.runAndSend(item, Math.min(item.getAmount(), item.item.getStackSize()), !quickMove);
+      event.use();
    }
 
    /**

@@ -9,21 +9,30 @@ import java.nio.file.Path;
 import org.junit.Test;
 
 /**
- * The terminal's item grid must tell the engine not to sort it.
+ * The terminal's item grid must actually apply the chosen sort, not silently discard it.
  *
- * <p>{@code FormItemList} defaults its {@code sorted} field to true, and in {@code WAIT_FULl} mode it builds its
- * elements with {@code insertSortedList} and then sorts them again, both by {@code Comparator.comparing(i -> i.item)}
- * -- {@code InventoryItem.compareTo}, category then display name. It does that to whatever {@code addAllItems}
- * produced. So the form's own comparator ran, and its result was then discarded.
+ * <p>The original shape of this bug: {@code FormItemList} defaulted its {@code sorted} field to true, and in
+ * {@code WAIT_FULl} mode it built its elements with {@code insertSortedList} and then sorted them again, both by
+ * {@code Comparator.comparing(i -> i.item)} -- {@code InventoryItem.compareTo}, category then display name. It did
+ * that to whatever {@code addAllItems} produced. So the form's own comparator ran, and its result was then
+ * discarded by the widget underneath it.
  *
  * <p>That shipped, and it was reported as a button that did not refresh the view. It was not: the view rebuilt
  * correctly every time and the order was overwritten afterwards. GROUP hid it, because GROUP is
  * {@code naturalOrder()} -- the very comparator the engine was applying -- so two of the three modes did nothing and
- * the default looked perfect.
+ * the default looked perfect. The fix at the time was one call, {@code itemList.setSorted(false)}, and this file's
+ * original test guarded exactly that call's presence.
  *
- * <p>A single call fixes it and nothing observable depends on that call being there, which is precisely the kind of
- * line that gets removed during a cleanup. Hence a test. It reads the source rather than the running form because
- * the fault is a call being absent, and because a form needs a client to instantiate.
+ * <p><b>That specific guard retired (24 Aug) when the grid itself did.</b> {@code itemList} is a
+ * {@code FormContentBox} now, part of the same recursive category tree the crafting tab uses, and a
+ * {@code FormContentBox} has no self-sorting field to defeat in the first place -- {@link arcanestorage.ui.CategoryGrouping}
+ * sorts each category's own entries exactly once, from the comparator it is given, and nothing downstream re-sorts
+ * them. The specific mechanism that caused the original bug cannot recur, because the class that caused it is gone
+ * from this path entirely.
+ *
+ * <p>The general risk -- a sort control changes a field, and that field's value never actually reaches the thing
+ * that sorts -- is still worth guarding, just against the new pipeline instead of the old one. See
+ * {@link #sortModeChangesReachCategoryGrouping()}.
  */
 public class ListSortGuardTest {
 
@@ -31,13 +40,21 @@ public class ListSortGuardTest {
       Path.of("src/main/java/arcanestorage/container/StorageTerminalContainerForm.java");
 
    @Test
-   public void theItemListDoesNotSortItself() throws IOException {
+   public void sortModeChangesReachCategoryGrouping() throws IOException {
       String source = Files.readString(FORM, StandardCharsets.UTF_8);
 
+      // Both the "content changed" and the "sort mode changed" paths must hand the current sort mode's own
+      // comparator to the grouping -- not a fixed order, and not the previous call's stale comparator kept around.
       assertTrue(
-         "StorageTerminalContainerForm must call itemList.setSorted(false), or FormItemList re-sorts the grid by "
-            + "InventoryItem.compareTo and the sort button silently does nothing for NAME and AMOUNT",
-         source.contains("setSorted(false)"));
+         "refreshList must rebuild storageGrouping with the current sortMode's comparator, or a network content "
+            + "change would reset the visible order to whatever the grouping last remembered",
+         source.contains("this.storageGrouping.onEntriesChanged(this.aggregated, this.currentMask(), "
+               + "this.sortMode.comparator())"));
+
+      assertTrue(
+         "resortStorageTree must call storageGrouping.onSortChanged(this.sortMode.comparator()), or the sort "
+            + "button changes sortMode without the grid's own order ever being told to change",
+         source.contains("this.storageGrouping.onSortChanged(this.sortMode.comparator())"));
    }
 
    @Test

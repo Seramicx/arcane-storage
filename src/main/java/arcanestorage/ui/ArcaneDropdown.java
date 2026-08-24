@@ -61,9 +61,6 @@ import necesse.entity.mobs.PlayerMob;
  */
 public class ArcaneDropdown<T> extends FormDropdownSelectionButton<T> {
 
-   /** Font size of the entries, matching the engine's own dropdowns. */
-   private static final int MENU_FONT = 12;
-
    /** The option tree, built by the caller and turned into a menu on each click. */
    public final Options choices = new Options();
 
@@ -127,8 +124,14 @@ public class ArcaneDropdown<T> extends FormDropdownSelectionButton<T> {
       }
    }
 
+   /**
+    * Built at this button's own font size rather than a fixed one, so a choice like "Coarse grouping" reads at
+    * the same size open as it does closed. An earlier version hardcoded the menu's font to 12 regardless of
+    * {@link #size}, which read close enough on the shorter labels this class had been used for so far and did
+    * not on "Coarse grouping"/"Fine grouping" at a {@code SIZE_20} button's 16px.
+    */
    private SelectionFloatMenu buildMenu(Options options, int minWidth) {
-      SelectionFloatMenu menu = new ThemedMenu(this, minWidth);
+      SelectionFloatMenu menu = new ThemedMenu(this, this.size.getFontOptions(), minWidth);
       for (Entry entry : options.entries) {
          entry.addTo(menu);
       }
@@ -193,8 +196,8 @@ public class ArcaneDropdown<T> extends FormDropdownSelectionButton<T> {
 
       private final FormComponent owner;
 
-      ThemedMenu(FormComponent owner, int minWidth) {
-         super(owner, SelectionFloatMenu.Solid(new FontOptions(MENU_FONT)), minWidth);
+      ThemedMenu(FormComponent owner, FontOptions font, int minWidth) {
+         super(owner, SelectionFloatMenu.Solid(font), minWidth);
          this.owner = owner;
       }
 
