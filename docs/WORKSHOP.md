@@ -85,6 +85,14 @@ and it comes from `CHANGELOG.md` so the two cannot drift.
 
 ---
 
+[h3]1.1.0[/h3]
+
+[b]The storage and crafting tabs can now group items by category[/b], with a None/Coarse/Fine dropdown per tab instead of one fixed grouping. Fine is the closest match to how the terminal already grouped before this setting existed, so an upgrade changes nothing until the dropdown is opened. Crafting's list of sources also moved into its own dropdown, freeing the row it used to take as a strip of tickboxes.
+
+[b]Holding a Wireless Terminal no longer swallows every click.[/b] Right-clicking a chest, a placed Storage Terminal, or anything else interactable now interacts with that object as normal; the terminal's own network only opens when there is nothing else to click on. Pairing is unaffected: right-clicking a Wireless Transceiver with the terminal in hand still pairs to it.
+
+[b]Arcane Storage objects now respect a private settlement's access rules.[/b] A storage terminal, bus, access point, base station, or wireless transceiver placed inside a settlement that is private and owned now refuses a player who is neither the owner nor on the owning team, the same rule the settlement's own containers already enforce. Nothing changes outside a settlement, or in one that is public or unowned.
+
 [h3]1.0.6[/h3]
 
 [b]Storage Units now slow spoiling, more so per tier.[/b] Base is unaffected; Demonic halves the rate, Tungsten quarters it, Fallen cuts it to an eighth — stronger than a vanilla Cooling Box, since it is the top of a four-rung climb rather than a match for one specific vanilla object. No fuel needed; it is a property of the unit itself.
