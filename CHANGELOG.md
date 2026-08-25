@@ -5,6 +5,13 @@ the GitHub release notes are both taken from here, so they cannot disagree.
 
 Dates are release dates. Anything still unreleased sits under Unreleased until it ships.
 
+## 1.1.1
+
+**Necesse 1.3.3 compatibility.** No behaviour changes of its own; targets the game's latest update, whose own
+patch notes are content, AI, and bugfixes with nothing in Arcane Storage's path. Necesse's own network
+handshake refuses a client on a different version than the server, independent of any mod, so play across a
+mismatched pair still is not possible -- keep the server and every client on the same version.
+
 ## 1.1.0
 
 **The storage and crafting tabs can now group items by category**, with a None/Coarse/Fine dropdown per tab

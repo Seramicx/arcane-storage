@@ -573,7 +573,7 @@ public final class UnitUpgrade {
    /** Undoes a partial consumption: back to the player where it fits, onto the floor where it does not. */
    private static void refund(Level level, PlayerMob player, int x, int y, List<InventoryItem> taken) {
       for (InventoryItem item : taken) {
-         if (player != null && player.getInv() != null && player.getInv().addItem(item, false, PURPOSE)) {
+         if (player != null && player.getInv() != null && player.getInv().addItem(item, false, PURPOSE, null)) {
             continue;
          }
 

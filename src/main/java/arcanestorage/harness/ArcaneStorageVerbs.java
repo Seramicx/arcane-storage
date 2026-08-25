@@ -263,7 +263,7 @@ public final class ArcaneStorageVerbs {
          if (item == null) {
             item = new necesse.inventory.InventoryItem(tier.wirelessTerminalId(), 1);
             new arcanestorage.remote.RemoteBinding(context.level, x, y).write(item);
-            context.client.playerMob.getInv().addItem(item, true, "harnesspair");
+            context.client.playerMob.getInv().addItem(item, true, "harnesspair", null);
             return true;
          }
 
