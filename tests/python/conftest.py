@@ -101,6 +101,27 @@ class Terminal:
 
 
 @pytest.fixture
+def automatic_unloading(harness: Harness):
+    """Puts the engine's unload sweeps back for the duration of one test.
+
+    The session suppresses them, and must: in manual mode the sweep's thirty-one seconds pass in no
+    wall-clock time, so any test granting hundreds of ticks would have its world dismantled underneath it.
+    But a test whose *subject* is the interaction between a region pin and that sweep needs the sweep to
+    exist, and asking for it explicitly is the only way to say so.
+
+    Before this fixture those tests passed by accident. The suppression was applied once at session start
+    and a fresh JVM forgot it, so from the first restart onward the sweeps quietly came back -- and these
+    tests, which run after the restarting ones, depended on that. Closing that gap in the harness broke the
+    one test that needed a live sweep and made its sibling vacuous, which is how the accident surfaced.
+    """
+    harness.set_auto_unload(True)
+    try:
+        yield harness
+    finally:
+        harness.set_auto_unload(False)
+
+
+@pytest.fixture
 def storage(harness: Harness) -> Harness:
     """The harness with every storage object removed, wherever it is on the level.
 

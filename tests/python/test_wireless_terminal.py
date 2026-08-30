@@ -256,12 +256,15 @@ def test_items_withdrawn_from_a_reloaded_region_are_really_there(storage):
     assert storage.total("ironbar") == 30, "the units hold what is left, and nothing was duplicated"
 
 
-def test_an_open_remote_container_keeps_its_regions_loaded(storage):
+def test_an_open_remote_container_keeps_its_regions_loaded(storage, automatic_unloading):
     """The regression test for the pin, and the reason it is worth having.
 
     Thirty-one seconds of game time pass here in no wall-clock time at all, which is the whole trick:
     the sweep that closed the terminal in game runs, and the container has to survive it. Verified to
     bite by removing the region half of the pin and watching both assertions fail.
+
+    Needs ``automatic_unloading`` for that verification to still hold: with the session's suppression in
+    force there is no sweep to survive, so both assertions would pass whether the pin worked or not.
     """
     dx, dy = storage.distant_offset()
     storage.place("fallentransceiver", dx, dy)
@@ -280,9 +283,13 @@ def test_an_open_remote_container_keeps_its_regions_loaded(storage):
     assert storage.query("binding")["remoteopen"] is True, "the container closed itself, as it did in game"
 
 
-def test_a_closed_remote_container_stops_pinning(storage):
+def test_a_closed_remote_container_stops_pinning(storage, automatic_unloading):
     """The other half of the pin: it must not leak. A terminal opened once should not keep a region alive
-    for the rest of the session, which is the failure mode a reference count would have introduced."""
+    for the rest of the session, which is the failure mode a reference count would have introduced.
+
+    Needs ``automatic_unloading`` because the assertion is that the engine's own sweep gets to take the
+    region away once nothing is pinning it. With the sweep suppressed there is nothing to observe.
+    """
     dx, dy = storage.distant_offset()
     storage.place("fallentransceiver", dx, dy)
     storage.place("unit", dx + 1, dy)
