@@ -127,12 +127,13 @@ def test_a_name_cannot_carry_formatting_into_other_players_interfaces(storage):
 
 
 @pytest.mark.xfail(
-    reason="Same entity-churn artifact as test_scheduler's stale bus state, diagnosed there in full: more "
-    "than one BusObjectEntity gets registered at a given tile across a run, and an ordinal derived from the "
-    "device list can therefore count an instance no reader will ever see. Intermittent -- roughly one run in "
-    "three -- and it moves when neighbouring test files change, which is what rules out a fault in the "
-    "numbering itself. A deterministic tileX/tileY enumeration would make ordinals independent of join order "
-    "and is the likely real fix, but it changes player-visible bus numbering, so it waits for that decision.",
+    reason="Bus ordinals are derived from device-list join order, so a tile that has had more than one "
+    "BusObjectEntity registered over a run can be numbered from an instance no reader will ever see. "
+    "No longer intermittent: with the harness's clocks under the tick budget this fails on every run, "
+    "which moves it from an unexplained flake to a plain consequence of how ordinals are assigned. The fix "
+    "is a deterministic tileX/tileY enumeration, making ordinals independent of join order -- it changes "
+    "player-visible bus numbering, so it waits for that decision rather than for more diagnosis. Left "
+    "non-strict so that making that change does not require editing this marker in the same commit.",
     strict=False,
 )
 def test_the_terminal_reports_names_not_only_coordinates(storage):
