@@ -130,16 +130,44 @@ public final class NetworkIndexes {
          return existing;
       }
 
+      if (existing == null) {
+         // The network may already be indexed under a different key. A network is named by its lowest-tile-
+         // order member, and that name is not stable under the very membership changes it is meant to track --
+         // removing or adding specifically that member changes the key a rebuild computes next. Devices are
+         // the identity that survives it: any device this walk just found, that was also a member of an
+         // existing entry, means that entry is this same network under its previous name.
+         //
+         // Without this, share() only ever added under the new key and never removed the old one, so the
+         // level kept a second fully-built, internally-consistent index for the same network, and every
+         // reader of on(Level) -- indexdrift, the indexes count -- summed both. It took the specific
+         // topology change that retires the lowest-ordered member, which is why it was rare and why the
+         // test that caught it moved around: whichever fixture's break or split happened to do that.
+         for (NetworkIndex candidate : indexes.values()) {
+            if (candidate.devices().stream().anyMatch(devices::contains)) {
+               existing = candidate;
+               break;
+            }
+         }
+      }
+
       if (existing != null) {
          // Rebuilt in place rather than replaced, so that every device already holding a reference follows
          // along. A replacement would leave them each walking to find the new one, which is the cost this
          // class exists to remove.
+         long oldKey = existing.filedUnder();
+         if (oldKey != key) {
+            indexes.remove(oldKey, existing);
+         }
+
          existing.rebuild(units, devices, tick, topologyVersion);
+         indexes.put(key, existing);
+         existing.filedUnder(key);
          return existing;
       }
 
       NetworkIndex built = new NetworkIndex(units, devices, tick, topologyVersion);
       indexes.put(key, built);
+      built.filedUnder(key);
       return built;
    }
 

@@ -113,6 +113,32 @@ public final class NetworkIndex {
     */
    private long version;
 
+   /**
+    * The key this index is currently filed under in {@link NetworkIndexes}, so a rebuild that computes a
+    * different key can remove the stale entry instead of leaving an orphan behind.
+    *
+    * <p><b>Held here rather than in a side map, and that is not a style preference.</b> The obvious
+    * alternative is an {@code IdentityHashMap<NetworkIndex, Long>} in {@code NetworkIndexes}, and it leaks:
+    * it strongly references every index, an index holds its devices, and an {@code ObjectEntity} holds its
+    * {@code Level}. That pins every level ever visited in memory and quietly defeats the {@code WeakHashMap}
+    * the indexes are filed in -- a worse leak than the orphaned-entry one it would be fixing. A field cannot
+    * outlive its index.
+    *
+    * <p>No "unfiled" sentinel is needed even though 0 is a legitimate key: {@code share()} files every index
+    * it creates before returning it, so anything reachable from the map has this set.
+    */
+   private long filedUnder;
+
+   /** @see #filedUnder */
+   long filedUnder() {
+      return this.filedUnder;
+   }
+
+   /** @see #filedUnder */
+   void filedUnder(long key) {
+      this.filedUnder = key;
+   }
+
    NetworkIndex(List<NetworkStorage> units, List<ObjectEntity> devices, long tick, long topologyVersion) {
       this.rebuild(units, devices, tick, topologyVersion);
    }
