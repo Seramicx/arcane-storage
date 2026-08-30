@@ -80,6 +80,8 @@ latest-log.txt
 .project
 .classpath
 .settings/
+# Compiled output from the same language server, which builds into bin/ rather than build/.
+bin/
 
 # Python bytecode. Generated, and was tracked by oversight.
 __pycache__/
