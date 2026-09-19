@@ -91,14 +91,12 @@ public class StorageTerminalObjectEntity extends InventoryObjectEntity {
    public static final int STATION_SLOTS = 10;
 
    /**
-    * Only crafting stations may be installed, one per slot, and only ones that do not need to be
-    * placed to work.
+    * Whether this item may be installed in a station socket.
     *
-    * <p>Asked of the item rather than checked against a list of known benches:
-    * {@link ObjectItem#getObject()} reaches the object, and {@code getCraftingTechs()} is declared on
-    * {@link CraftingStationObject}, so extending it is the only way an object can say which recipes it
-    * unlocks. A modded bench therefore works here without this mod knowing it exists, and the check is
-    * as general as the game itself allows.
+    * <p>Delegates to {@link StationTechHelper}: ordinary {@link CraftingStationObject}s that do not need
+    * their tile, plus deliberate recipe-only exceptions (the Forge / {@code ProcessingForgeObject}, which
+    * is not a crafting station at all). Installed exceptions unlock techs on the terminal Crafting tab
+    * without running fuel or processing on the tile — see {@link StationTechHelper}.
     */
    @Override
    public boolean isItemValid(int slot, InventoryItem item) {
