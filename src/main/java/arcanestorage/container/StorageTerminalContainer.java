@@ -1003,16 +1003,6 @@ public class StorageTerminalContainer extends Container {
       return fp;
    }
 
-   /** Hash of an item's GND payload so fingerprint tracks metadata, not only id/amount. */
-   private static long gndStamp(InventoryItem item) {
-      byte[] data = item.getGndData().getContentPacket().getPacketData();
-      long h = data.length;
-      for (int i = 0; i < data.length; i++) {
-         h = h * 31L + (data[i] & 0xff);
-      }
-      return h;
-   }
-
    /**
     * Items that carry another inventory (or coin totals) inside their GND.
     *
