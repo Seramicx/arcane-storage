@@ -99,7 +99,6 @@ arcanestorage_grouping_none=Tanpa pengelompokan
 arcanestorage_grouping_coarse=Pengelompokan kasar
 arcanestorage_grouping_fine=Pengelompokan halus
 arcanestorage_sourcesbutton=Sumber
-stationupgrades=Peningkatan stasiun
 arcanestorage_tab_storage=Penyimpanan
 arcanestorage_tab_crafting=Kerajinan
 arcanestorage_tab_stations=Stasiun
@@ -187,3 +186,4 @@ arcanestorage_settings_filehint=File konfigurasi: mods/elias.arcanestorage.cfg d
 
 [itemcategory]
 arcanestorage=Arcane Storage
+stationupgrades=Peningkatan stasiun

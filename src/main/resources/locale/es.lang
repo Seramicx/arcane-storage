@@ -99,7 +99,6 @@ arcanestorage_grouping_none=Sin agrupación
 arcanestorage_grouping_coarse=Agrupación gruesa
 arcanestorage_grouping_fine=Agrupación fina
 arcanestorage_sourcesbutton=Fuentes
-stationupgrades=Mejoras de estación
 arcanestorage_tab_storage=Almacenamiento
 arcanestorage_tab_crafting=Fabricación
 arcanestorage_tab_stations=Estaciones
@@ -187,3 +186,4 @@ arcanestorage_settings_filehint=Archivo de config: mods/elias.arcanestorage.cfg 
 
 [itemcategory]
 arcanestorage=Almacenamiento Arcano
+stationupgrades=Mejoras de estación

@@ -88,7 +88,6 @@ arcanestorage_grouping_none=No grouping
 arcanestorage_grouping_coarse=Coarse grouping
 arcanestorage_grouping_fine=Fine grouping
 arcanestorage_sourcesbutton=Sources
-stationupgrades=Station Upgrades
 arcanestorage_tab_storage=Storage
 arcanestorage_tab_crafting=Crafting
 arcanestorage_tab_stations=Stations
@@ -176,3 +175,4 @@ arcanestorage_settings_filehint=Config file: mods/elias.arcanestorage.cfg in the
 
 [itemcategory]
 arcanestorage=Arcane Storage
+stationupgrades=Station Upgrades

@@ -741,21 +741,14 @@ public class StorageTerminalContainer extends Container {
     * Whether the terminal can currently build this recipe's kind at all -- a question about
     * stations, not about materials.
     *
-    * <p>Hand recipes always qualify: a recipe needing no station needs no permission, and letting
-    * them through is also what keeps the crafting tab from being empty before the first bench is
-    * installed.
-    *
-    * <p>{@linkplain arcanestorage.recipe.StationUpgradeRecipes Station upgrade} recipes also always
-    * qualify: they use {@link RecipeTechRegistry#NONE} and the base station is an ingredient, so
-    * craftability (having the bench in a socket or in the network) is the real gate, not an installed
-    * tech.
+    * <p>Hand recipes and {@linkplain arcanestorage.recipe.StationUpgradeRecipes station upgrades}
+    * both use {@link RecipeTechRegistry#NONE}, so they always qualify here: a recipe needing no
+    * station needs no permission, and upgrade recipes treat the base station as an ingredient
+    * (craftability is having that item in a socket, the network, or the bag). Letting NONE through
+    * is also what keeps the crafting tab from being empty before the first bench is installed.
     */
    public boolean isRecipeAvailable(Recipe recipe) {
       if (recipe.matchTech(RecipeTechRegistry.NONE)) {
-         return true;
-      }
-
-      if (arcanestorage.recipe.StationUpgradeRecipes.isUpgradeRecipe(recipe)) {
          return true;
       }
 

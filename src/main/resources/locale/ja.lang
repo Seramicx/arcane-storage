@@ -99,7 +99,6 @@ arcanestorage_grouping_none=グループ化なし
 arcanestorage_grouping_coarse=粗いグループ化
 arcanestorage_grouping_fine=細かいグループ化
 arcanestorage_sourcesbutton=ソース
-stationupgrades=ステーションアップグレード
 arcanestorage_tab_storage=ストレージ
 arcanestorage_tab_crafting=作成
 arcanestorage_tab_stations=作業台
@@ -187,3 +186,4 @@ arcanestorage_settings_filehint=設定ファイル: ゲーム設定フォルダ�
 
 [itemcategory]
 arcanestorage=アルケインストレージ
+stationupgrades=ステーションアップグレード

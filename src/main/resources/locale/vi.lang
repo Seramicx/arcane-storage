@@ -99,7 +99,6 @@ arcanestorage_grouping_none=Không phân nhóm
 arcanestorage_grouping_coarse=Phân nhóm thô
 arcanestorage_grouping_fine=Phân nhóm chi tiết
 arcanestorage_sourcesbutton=Nguồn
-stationupgrades=Nâng cấp trạm
 arcanestorage_tab_storage=Kho
 arcanestorage_tab_crafting=Chế Tạo
 arcanestorage_tab_stations=Bàn Chế Tạo
@@ -188,3 +187,4 @@ arcanestorage_settings_filehint=Tệp cấu hình: mods/elias.arcanestorage.cfg 
 
 [itemcategory]
 arcanestorage=Kho Huyền Bí
+stationupgrades=Nâng cấp trạm
