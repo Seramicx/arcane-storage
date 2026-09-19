@@ -31,7 +31,8 @@ import necesse.gfx.ui.ButtonColor;
  * in the game.
  *
  * <p>Right-click is the escape hatch back to "which one": it checks that row alone and clears every
- * other tick, without closing the panel. Left-click stays independent multi-select.
+ * other tick, without closing the panel. Right-click the same solo row again to re-check every
+ * source. Left-click stays independent multi-select.
  *
  * <h2>What this is built from instead</h2>
  *
@@ -151,7 +152,7 @@ public class ArcaneCheckDropdown extends FormTextButton {
             if (e.event != null && e.event.getID() == InputID.RIGHT_CLICK) {
                // FormCheckBox toggles before firing onClicked; undo that so exclusive-select owns state.
                e.preventDefault();
-               this.exclusiveSelect(index, ticks);
+               this.exclusiveSelectOrRestore(index, ticks);
                return;
             }
             row.setChecked(e.from.checked);
@@ -160,6 +161,37 @@ public class ArcaneCheckDropdown extends FormTextButton {
       }
 
       this.getManager().openFloatMenu(this.openMenu, this, event);
+   }
+
+   /**
+    * Right-click once: check {@code selectedIndex} alone. Right-click that same solo row again:
+    * re-check every row. Uses the Row model (not the already-toggled checkbox) so the second click
+    * still sees the exclusive state from the first.
+    */
+   private void exclusiveSelectOrRestore(int selectedIndex, List<FormCheckBox> ticks) {
+      if (this.isAlreadyExclusive(selectedIndex)) {
+         this.selectAll(ticks);
+         return;
+      }
+      this.exclusiveSelect(selectedIndex, ticks);
+   }
+
+   /** True when {@code selectedIndex} is the only checked row in the model. */
+   private boolean isAlreadyExclusive(int selectedIndex) {
+      for (int i = 0; i < this.rows.size(); i++) {
+         if (this.rows.get(i).isChecked() != (i == selectedIndex)) {
+            return false;
+         }
+      }
+      return true;
+   }
+
+   /** Checks every row -- model and drawn ticks together. */
+   private void selectAll(List<FormCheckBox> ticks) {
+      for (int i = 0; i < this.rows.size(); i++) {
+         this.rows.get(i).setChecked(true);
+         ticks.get(i).checked = true;
+      }
    }
 
    /**
