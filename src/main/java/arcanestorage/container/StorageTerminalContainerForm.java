@@ -71,6 +71,8 @@ import necesse.inventory.container.Container;
 import necesse.inventory.container.ContainerAction;
 import necesse.inventory.item.ItemCategory;
 import necesse.inventory.item.ItemSearchTester;
+import necesse.level.gameObject.container.CraftingStationObject;
+import arcanestorage.objectentity.StorageTerminalObjectEntity;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -1012,6 +1014,8 @@ public class StorageTerminalContainerForm<T extends StorageTerminalContainer> ex
          Inventory sockets = unit.getInventory();
          for (int slot = 0; slot < sockets.getSize(); slot++) {
             InventoryItem item = sockets.getItem(slot);
+            // Prefer StationTechHelper so forge/cooking/mill synthetic techs match the
+            // same unlock list used by crafting (getCraftingStation alone misses those).
             Tech[] unlocked = arcanestorage.objectentity.StationTechHelper.getStationTechs(item);
             if (unlocked == null) {
                continue;
