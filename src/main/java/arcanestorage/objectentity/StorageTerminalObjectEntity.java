@@ -102,8 +102,7 @@ public class StorageTerminalObjectEntity extends InventoryObjectEntity {
     */
    @Override
    public boolean isItemValid(int slot, InventoryItem item) {
-      CraftingStationObject station = getCraftingStation(item);
-      return station != null && !needsItsPlacement(station);
+      return StationTechHelper.isValidStationItem(item);
    }
 
    /**
@@ -255,10 +254,7 @@ public class StorageTerminalObjectEntity extends InventoryObjectEntity {
       for (NetworkStations unit : this.getLinkedStationUnits()) {
          Inventory sockets = unit.getInventory();
          for (int slot = 0; slot < sockets.getSize(); slot++) {
-            CraftingStationObject station = getCraftingStation(sockets.getItem(slot));
-            if (station != null) {
-               techs.addAll(Arrays.asList(station.getCraftingTechs()));
-            }
+            StationTechHelper.addStationTechs(sockets.getItem(slot), techs);
          }
       }
 
