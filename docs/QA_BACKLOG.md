@@ -127,7 +127,8 @@ Stated by Elias, in order of confirmation:
 
 Manual only: the Sources dropdown is client UI. Open Crafting with several benches ticked, right-click
 one row (e.g. Forge): only that row should stay checked and the recipe list should filter to it.
-Left-click should still multi-select without closing the menu. Hover the Sources button for the tip.
+Right-click that same row again: every source should re-check. Left-click should still multi-select
+without closing the menu. Hover the Sources button for the tip.
 
 ### The reworked rule panel and logistics tab — CONFIRMED 14 Aug 2026
 
