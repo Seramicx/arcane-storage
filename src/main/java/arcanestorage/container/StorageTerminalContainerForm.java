@@ -71,7 +71,6 @@ import necesse.inventory.container.Container;
 import necesse.inventory.container.ContainerAction;
 import necesse.inventory.item.ItemCategory;
 import necesse.inventory.item.ItemSearchTester;
-import necesse.level.gameObject.container.CraftingStationObject;
 import arcanestorage.objectentity.StorageTerminalObjectEntity;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
