@@ -997,7 +997,11 @@ public class StorageTerminalContainer extends Container {
    }
 
    /**
-    * Stable identity for a pouch / coin pouch without serializing its full GND.
+    * Stable identity for a pouch / coin pouch without shipping its full GND on the wire.
+    *
+    * <p>Nested slot fingerprints hash each contained stack's id, amount, and canonical GND content
+    * packet — map size alone would collide two enchanted items that happen to have the same number of
+    * GND keys.
     */
    static long nestedFingerprint(InventoryItem item) {
       if (item == null || item.item == null) {
@@ -1026,9 +1030,19 @@ public class StorageTerminalContainer extends Container {
          }
          fp = fp * 31L + slot.item.getID();
          fp = fp * 31L + Integer.toUnsignedLong(slot.getAmount());
-         fp = fp * 31L + Integer.toUnsignedLong(slot.getGndData().getMapSize());
+         fp = fp * 31L + gndStamp(slot);
       }
       return fp;
+   }
+
+   /** Hash of an item's GND payload so fingerprints track metadata, not only map size. */
+   private static long gndStamp(InventoryItem item) {
+      byte[] data = item.getGndData().getContentPacket().getPacketData();
+      long h = data.length;
+      for (int i = 0; i < data.length; i++) {
+         h = h * 31L + (data[i] & 0xff);
+      }
+      return h;
    }
 
    /**
