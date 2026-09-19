@@ -106,17 +106,44 @@ def test_forge_does_not_auto_smelt_stored_ore(terminal):
     terminal.open()
 
     terminal.harness.do("install", "forge")
-    # Tick / wait would be where auto-smelt would show; craft was not requested.
+    # Processing forge would smelt over world ticks; settle so a regression cannot hide behind "no time passed".
+    terminal.harness.settle(40)
     assert terminal.count("ironore") == 10
     assert terminal.count("ironbar") == 0
 
 
-@pytest.mark.parametrize("food_station", ["cookingstation", "cookingpot", "roastingstation"])
-def test_food_stations_install_as_instant_recipes(terminal, food_station):
-    """Cooking / pot / roasting unlock food techs without fuel OE or auto-cook."""
+# station, ingredient, amount consumed per craft, result item
+FOOD_STATION_RECIPES = [
+    # Cooking station unlocks cooking + pot + roasting techs.
+    ("cookingstation", "rawpork", 1, "roastedpork"),
+    ("cookingpot", "flour", 2, "bread"),
+    ("roastingstation", "rawpork", 1, "roastedpork"),
+]
+
+
+@pytest.mark.parametrize("station,ingredient,consumed,result", FOOD_STATION_RECIPES)
+def test_food_stations_install_as_instant_recipes(terminal, station, ingredient, consumed, result):
+    """Cooking / pot / roasting unlock food techs: craft without fuel OE or auto-cook."""
+    terminal.harness.fill(1, 0, ingredient, 10)
     terminal.open()
 
-    terminal.harness.do("install", food_station)
+    terminal.harness.do("install", station)
+    terminal.harness.do("craft", result)
+
+    assert terminal.harness.held(result) == 1
+    assert terminal.count(ingredient) == 10 - consumed
+
+
+@pytest.mark.parametrize("station,ingredient,_,result", FOOD_STATION_RECIPES)
+def test_food_stations_do_not_auto_cook_stored_ingredients(terminal, station, ingredient, _, result):
+    """Food left in storage stays raw until the player crafts — install alone must not process it."""
+    terminal.harness.fill(1, 0, ingredient, 10)
+    terminal.open()
+
+    terminal.harness.do("install", station)
+    terminal.harness.settle(40)
+    assert terminal.count(ingredient) == 10
+    assert terminal.count(result) == 0
 
 
 def test_grain_mill_installs_as_instant_recipes(terminal):
@@ -137,6 +164,7 @@ def test_grain_mill_does_not_auto_mill_stored_wheat(terminal):
     terminal.open()
 
     terminal.harness.do("install", "grainmill")
+    terminal.harness.settle(40)
     assert terminal.count("wheat") == 10
     assert terminal.count("flour") == 0
 
