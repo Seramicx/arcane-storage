@@ -119,9 +119,31 @@ def test_food_stations_install_as_instant_recipes(terminal, food_station):
     terminal.harness.do("install", food_station)
 
 
+def test_grain_mill_installs_as_instant_recipes(terminal):
+    """Installing a Grain Mill unlocks GRAIN_MILL: flour from wheat with no processing wait."""
+    terminal.harness.fill(1, 0, "wheat", 10)
+    terminal.open()
+
+    terminal.harness.do("install", "grainmill")
+    terminal.harness.do("craft", "flour")
+
+    assert terminal.harness.held("flour") == 1
+    assert terminal.count("wheat") == 9
+
+
+def test_grain_mill_does_not_auto_mill_stored_wheat(terminal):
+    """Wheat in storage stays wheat until the player crafts — install alone must not process it."""
+    terminal.harness.fill(1, 0, "wheat", 10)
+    terminal.open()
+
+    terminal.harness.do("install", "grainmill")
+    assert terminal.count("wheat") == 10
+    assert terminal.count("flour") == 0
+
+
 #: Every vanilla station whose techs an installed item can answer for: `CraftingStationObject`
 #: subclasses, taken from `RecipeTechRegistry`'s own itemStringIDs so the list cannot drift from the
-#: game's — plus recipe-only exceptions (forge / fueled food stations).
+#: game's — plus recipe-only exceptions (forge / fueled food stations / grain mill).
 INSTALLABLE_STATIONS = [
     "workstation", "demonicworkstation", "tungstenworkstation", "fallenworkstation",
     "ironanvil", "demonicanvil", "tungstenanvil", "fallenanvil",
@@ -131,12 +153,13 @@ INSTALLABLE_STATIONS = [
     "transmutationstation",
     "forge",
     "cookingstation", "cookingpot", "roastingstation",
+    "grainmill",
 ]
 
-#: Stations that still need their tile (processing OE / settler workstation). Fuel craft benches are
-#: intentional exceptions above.
+#: Stations that still need their tile (processing OE / settler workstation). Recipe-only exceptions
+#: are listed above — compost bin and cheese press stay refused.
 PLACEMENT_DEPENDENT_STATIONS = [
-    "compostbin", "grainmill", "cheesepress",
+    "compostbin", "cheesepress",
 ]
 
 
