@@ -39,7 +39,7 @@ public class StationUnitObjectEntity extends InventoryObjectEntity implements Ne
     * Whether this item may sit in a socket — delegates to {@link StationTechHelper}.
     *
     * <p>That helper accepts ordinary no-tile {@code CraftingStationObject}s plus recipe-only exceptions
-    * (Forge / processing forge, cooking station, cooking pot, roasting station, grain mill). Keep this
+    * (Forge / processing forge, cooking station, cooking pot, roasting station, grain mill, keg). Keep this
     * javadoc in sync by deferring to the helper rather than restating the allow-list here.
     *
     * <p>Station Unit sockets and the terminal must agree exactly — a bench installable in a socket but

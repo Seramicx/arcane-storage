@@ -95,8 +95,9 @@ public class StorageTerminalObjectEntity extends InventoryObjectEntity {
     *
     * <p>Delegates to {@link StationTechHelper}: ordinary {@link CraftingStationObject}s that do not need
     * their tile, plus deliberate recipe-only exceptions (Forge / {@code ProcessingForgeObject}, fueled
-    * food benches — cooking station, cooking pot, roasting station — and the grain mill). Installed
-    * exceptions unlock techs on the terminal Crafting tab without running fuel or processing on the tile.
+    * food benches — cooking station, cooking pot, roasting station — the grain mill, and Necesse
+    * Expanded's keg). Installed exceptions unlock techs on the terminal Crafting tab without running
+    * fuel or processing on the tile.
     */
    @Override
    public boolean isItemValid(int slot, InventoryItem item) {

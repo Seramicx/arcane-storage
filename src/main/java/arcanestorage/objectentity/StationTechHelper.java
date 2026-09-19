@@ -18,7 +18,7 @@ import necesse.level.gameObject.container.GrainMillBaseObject;
  *
  * <p>Most benches still follow the placement rule on {@link StorageTerminalObjectEntity}: if a station
  * needs its tile (fuel, processing inventory, settler workstation state), it cannot be reduced to an
- * item in a socket. Three families are deliberate exceptions:
+ * item in a socket. Four families are deliberate exceptions:
  *
  * <ul>
  *   <li>The {@linkplain ProcessingForgeObject processing forge} (and the legacy {@link ForgeObject}),
@@ -29,13 +29,16 @@ import necesse.level.gameObject.container.GrainMillBaseObject;
  *   <li>{@link GrainMillBaseObject} — vanilla's grain mill is a processing settler workstation, not a
  *       {@link CraftingStationObject}. There is no tiered upgrade; multi-tile helper pieces share this
  *       base class.</li>
+ *   <li>Necesse Expanded's <b>Keg</b> ({@code "keg"} object / recipe tech) — another processing
+ *       workstation that is not a {@link CraftingStationObject}. Detected by string id so this mod
+ *       does not hard-depend on Expanded.</li>
  * </ul>
  *
  * <p>Installing any of these does <b>not</b> run the fueled/processing machine and does <b>not</b>
- * consume wood or auto-cook/smelt/mill items sitting in Storage Units. It only unlocks that station's
- * techs ({@link CraftingStationObject#getCraftingTechs()}, {@link RecipeTechRegistry#FORGE}, or
- * {@link RecipeTechRegistry#GRAIN_MILL}) on the terminal Crafting tab, which craft instantly from
- * network materials. Settlers keep using a placed station in the world.
+ * consume wood or auto-cook/smelt/mill/ferment items sitting in Storage Units. It only unlocks that
+ * station's techs ({@link CraftingStationObject#getCraftingTechs()}, {@link RecipeTechRegistry#FORGE},
+ * {@link RecipeTechRegistry#GRAIN_MILL}, or Expanded's {@code keg} tech) on the terminal Crafting tab,
+ * which craft instantly from network materials. Settlers keep using a placed station in the world.
  */
 public final class StationTechHelper {
 
@@ -73,6 +76,23 @@ public final class StationTechHelper {
    }
 
    /**
+    * Necesse Expanded Keg ({@code object id "keg"}). Soft-detected so Arcane Storage stays
+    * playable without Expanded; when the mod is present, unlocks its {@code keg} fermenting tech.
+    */
+   public static boolean isKegStation(GameObject object) {
+      return object != null && "keg".equals(object.getStringID());
+   }
+
+   /** {@code RecipeTechRegistry.getTech("keg")}, or null if Expanded (or the tech) is absent. */
+   public static Tech getKegTechOrNull() {
+      try {
+         return RecipeTechRegistry.getTech("keg");
+      } catch (java.util.NoSuchElementException ignored) {
+         return null;
+      }
+   }
+
+   /**
     * Whether this item may sit in a Station Unit / terminal station socket.
     */
    public static boolean isValidStationItem(InventoryItem item) {
@@ -86,6 +106,10 @@ public final class StationTechHelper {
       }
       // Grain mill is a processing settler workstation, not a crafting station.
       if (isGrainMillStation(object)) {
+         return true;
+      }
+      // Necesse Expanded keg — same shape as the mill (processing OE, not CraftingStationObject).
+      if (isKegStation(object)) {
          return true;
       }
       // Cooking / roasting / cooking pot / legacy forge: recipe unlock without fuel OE.
@@ -111,6 +135,10 @@ public final class StationTechHelper {
       }
       if (isGrainMillStation(object)) {
          return new Tech[]{RecipeTechRegistry.GRAIN_MILL};
+      }
+      if (isKegStation(object)) {
+         Tech keg = getKegTechOrNull();
+         return keg == null ? null : new Tech[]{keg};
       }
       if (object instanceof CraftingStationObject) {
          // Cooking station returns cooking + pot + roasting; pot/roaster return their own tech.
