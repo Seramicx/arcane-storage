@@ -957,10 +957,11 @@ public class StorageTerminalContainer extends Container {
    }
 
    /**
-    * O(slots) stamp of what the network holds. Intentionally ignores deep GND equality — amount and
-    * item id changes are what the storage grid needs to notice; full aggregate still runs when this
-    * changes. Avoids rebuilding the deduped list on every UI frame (was dropping FPS into single digits
-    * on larger networks).
+    * O(slots) stamp of what the network holds. Includes item id, amount, and a hash of each stack's
+    * GND content packet — the same identity {@link NetworkContents#aggregate} uses with
+    * {@code ignoreGNDData = false}. Cheaper than rebuilding the deduped list every UI frame (was
+    * dropping FPS into single digits on larger networks), but still invalidates when mutable GND
+    * changes (wireless bindings, pouch contents, etc.).
     */
    private long networkFingerprint() {
       long fp = 1L;
@@ -975,9 +976,20 @@ public class StorageTerminalContainer extends Container {
             }
             fp = fp * 31L + item.item.getID();
             fp = fp * 31L + item.getAmount();
+            fp = fp * 31L + gndStamp(item);
          }
       }
       return fp;
+   }
+
+   /** Hash of an item's GND payload so fingerprint tracks metadata, not only id/amount. */
+   private static long gndStamp(InventoryItem item) {
+      byte[] data = item.getGndData().getContentPacket().getPacketData();
+      long h = data.length;
+      for (int i = 0; i < data.length; i++) {
+         h = h * 31L + (data[i] & 0xff);
+      }
+      return h;
    }
 
    @Override
