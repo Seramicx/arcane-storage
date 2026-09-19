@@ -9,6 +9,7 @@ import necesse.inventory.recipe.Tech;
 import necesse.level.gameObject.GameObject;
 import necesse.level.gameObject.ProcessingForgeObject;
 import necesse.level.gameObject.container.CraftingStationObject;
+import necesse.level.gameObject.container.FueledCraftingStationObject;
 import necesse.level.gameObject.container.ForgeObject;
 
 /**
@@ -16,12 +17,21 @@ import necesse.level.gameObject.container.ForgeObject;
  *
  * <p>Most benches still follow the placement rule on {@link StorageTerminalObjectEntity}: if a station
  * needs its tile (fuel, processing inventory, settler workstation state), it cannot be reduced to an
- * item in a socket. The Forge is the deliberate exception. Vanilla registers it as
- * {@link ProcessingForgeObject}, which is <i>not</i> a {@link CraftingStationObject}, so the old check
- * rejected it outright. Installing one here does <b>not</b> run its fueled processor and does
- * <b>not</b> auto-smelt ores sitting in Storage Units — it only unlocks {@link RecipeTechRegistry#FORGE}
- * recipes on the terminal Crafting tab, which craft instantly from network materials with no wood.
- * Settlers keep using a placed forge in the world.
+ * item in a socket. Two families are deliberate exceptions:
+ *
+ * <ul>
+ *   <li>The {@linkplain ProcessingForgeObject processing forge} (and the legacy {@link ForgeObject}),
+ *       which are not installable as ordinary crafting stations.</li>
+ *   <li>{@link FueledCraftingStationObject}s — cooking station, roasting station, cooking pot, and
+ *       any other fueled craft bench — which normally refuse install because they need a fuel OE on
+ *       the tile.</li>
+ * </ul>
+ *
+ * <p>Installing either family does <b>not</b> run the fueled/processing machine and does <b>not</b>
+ * consume wood or auto-cook/smelt items sitting in Storage Units. It only unlocks that station's
+ * {@link CraftingStationObject#getCraftingTechs()} (or {@link RecipeTechRegistry#FORGE} for the
+ * processing forge) on the terminal Crafting tab, which craft instantly from network materials.
+ * Settlers keep using a placed station in the world.
  */
 public final class StationTechHelper {
 
@@ -41,6 +51,16 @@ public final class StationTechHelper {
    }
 
    /**
+    * Fueled craft benches (cooking station, roasting station, cooking pot, legacy forge, …).
+    *
+    * <p>These are {@link CraftingStationObject}s that {@link StorageTerminalObjectEntity#needsItsPlacement}
+    * rejects because they create a fuel object-entity. Allowed here as recipe-tech unlocks only.
+    */
+   public static boolean isFueledCraftStation(GameObject object) {
+      return object instanceof FueledCraftingStationObject;
+   }
+
+   /**
     * Whether this item may sit in a Station Unit / terminal station socket.
     */
    public static boolean isValidStationItem(InventoryItem item) {
@@ -48,7 +68,12 @@ public final class StationTechHelper {
       if (object == null) {
          return false;
       }
-      if (isForgeStation(object)) {
+      // Processing forge is not a CraftingStationObject at all.
+      if (object instanceof ProcessingForgeObject) {
+         return true;
+      }
+      // Cooking / roasting / cooking pot / legacy forge: recipe unlock without fuel OE.
+      if (isFueledCraftStation(object)) {
          return true;
       }
       if (object instanceof CraftingStationObject) {
@@ -65,10 +90,11 @@ public final class StationTechHelper {
       if (object == null) {
          return null;
       }
-      if (isForgeStation(object)) {
+      if (object instanceof ProcessingForgeObject) {
          return new Tech[]{RecipeTechRegistry.FORGE};
       }
       if (object instanceof CraftingStationObject) {
+         // Cooking station returns cooking + pot + roasting; pot/roaster return their own tech.
          return ((CraftingStationObject) object).getCraftingTechs();
       }
       return null;
