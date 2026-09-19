@@ -34,6 +34,11 @@ public class StationUpgradeRecipesGuardTest {
          recipe.contains("createCategory(\"U-A-A\", \"craftingstations\", CATEGORY_ID)")
             || recipe.contains("createCategory(\"U-A-A\", \"craftingstations\", \"stationupgrades\")"));
       assertTrue("en.lang must name the subgroup", locale.contains("stationupgrades=Station Upgrades"));
+      int itemCategory = locale.indexOf("[itemcategory]");
+      int stationUpgrades = locale.indexOf("stationupgrades=Station Upgrades");
+      assertTrue(
+         "stationupgrades must live under [itemcategory] (ItemCategory display names), not [ui]",
+         itemCategory >= 0 && stationUpgrades > itemCategory);
    }
 
    @Test
