@@ -152,6 +152,12 @@ public class StorageTerminalContainer extends Container {
    /** What the client was last told each mirrored slot holds, indexed by container slot. Server-side only. */
    private final InventoryItem[] mirrored;
 
+   /** Cached network aggregate; rebuilt only when {@link #aggregatedFingerprint} changes. */
+   private List<InventoryItem> aggregatedCache;
+
+   /** Cheap content stamp so {@link #getAggregatedItems()} is not O(network) equals-work every frame. */
+   private long aggregatedFingerprint = Long.MIN_VALUE;
+
    /**
     * How many slots this container registered.
     *
@@ -935,10 +941,43 @@ public class StorageTerminalContainer extends Container {
 
    public List<InventoryItem> getAggregatedItems() {
       if (this.isNetworkEmpty()) {
+         this.aggregatedCache = null;
+         this.aggregatedFingerprint = Long.MIN_VALUE;
          return new ArrayList<>();
       }
 
-      return NetworkContents.aggregate(this.level(), this.linkedUnits, AGGREGATE_PURPOSE);
+      long fingerprint = this.networkFingerprint();
+      if (this.aggregatedCache != null && fingerprint == this.aggregatedFingerprint) {
+         return this.aggregatedCache;
+      }
+
+      this.aggregatedCache = NetworkContents.aggregate(this.level(), this.linkedUnits, AGGREGATE_PURPOSE);
+      this.aggregatedFingerprint = fingerprint;
+      return this.aggregatedCache;
+   }
+
+   /**
+    * O(slots) stamp of what the network holds. Intentionally ignores deep GND equality — amount and
+    * item id changes are what the storage grid needs to notice; full aggregate still runs when this
+    * changes. Avoids rebuilding the deduped list on every UI frame (was dropping FPS into single digits
+    * on larger networks).
+    */
+   private long networkFingerprint() {
+      long fp = 1L;
+      for (NetworkStorage unit : this.linkedUnits) {
+         Inventory inventory = unit.getInventory();
+         fp = fp * 31L + inventory.getSize();
+         for (int slot = 0; slot < inventory.getSize(); slot++) {
+            InventoryItem item = inventory.getItem(slot);
+            if (item == null) {
+               fp = fp * 31L;
+               continue;
+            }
+            fp = fp * 31L + item.item.getID();
+            fp = fp * 31L + item.getAmount();
+         }
+      }
+      return fp;
    }
 
    @Override
