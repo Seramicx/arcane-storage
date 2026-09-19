@@ -88,20 +88,6 @@ def test_hand_recipes_need_no_station(terminal):
     assert terminal.harness.held("woodboat") == 1
 
 
-@pytest.mark.parametrize("fueled", ["cookingstation"])
-def test_fueled_stations_cannot_be_installed(terminal, fueled):
-    """Fuel-only benches that are not yet recipe-unlocked stay refused.
-
-    The Forge is the deliberate exception (see ``test_forge_installs_as_instant_recipes``). Other fueled
-    craft stations still need their tile until they get the same treatment.
-    """
-    terminal.open()
-
-    reply = terminal.harness.call("install", fueled)
-
-    assert reply.ok is False, f"{fueled} burns fuel, which the terminal cannot honour yet"
-
-
 def test_forge_installs_as_instant_recipes(terminal):
     """Installing a Forge unlocks FORGE techs: smelt from network ores with no fuel / auto-smelt."""
     terminal.harness.fill(1, 0, "ironore", 10)
@@ -125,9 +111,17 @@ def test_forge_does_not_auto_smelt_stored_ore(terminal):
     assert terminal.count("ironbar") == 0
 
 
+@pytest.mark.parametrize("food_station", ["cookingstation", "cookingpot", "roastingstation"])
+def test_food_stations_install_as_instant_recipes(terminal, food_station):
+    """Cooking / pot / roasting unlock food techs without fuel OE or auto-cook."""
+    terminal.open()
+
+    terminal.harness.do("install", food_station)
+
+
 #: Every vanilla station whose techs an installed item can answer for: `CraftingStationObject`
 #: subclasses, taken from `RecipeTechRegistry`'s own itemStringIDs so the list cannot drift from the
-#: game's.
+#: game's — plus recipe-only exceptions (forge / fueled food stations).
 INSTALLABLE_STATIONS = [
     "workstation", "demonicworkstation", "tungstenworkstation", "fallenworkstation",
     "ironanvil", "demonicanvil", "tungstenanvil", "fallenanvil",
@@ -136,11 +130,12 @@ INSTALLABLE_STATIONS = [
     "landscapingstation", "tungstenlandscapingstation", "fallenlandscapingstation",
     "transmutationstation",
     "forge",
+    "cookingstation", "cookingpot", "roastingstation",
 ]
 
-#: Stations that still need their tile (fuel / processing OE). Forge is the intentional exception above.
+#: Stations that still need their tile (processing OE / settler workstation). Fuel craft benches are
+#: intentional exceptions above.
 PLACEMENT_DEPENDENT_STATIONS = [
-    "cookingstation", "cookingpot", "roastingstation",
     "compostbin", "grainmill", "cheesepress",
 ]
 
