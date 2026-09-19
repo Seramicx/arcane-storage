@@ -35,8 +35,8 @@ public class SourceLabelGuardTest {
          "and label from that item's string id, not the tech's possibly-fake itemStringID",
          form.contains("ItemRegistry.getLocalization(station.item.getStringID())"));
       assertTrue(
-         "multi-tech stations still walk getCraftingTechs so each unlocked tech finds the socket",
-         form.contains("station.getCraftingTechs()"));
+         "multi-tech stations walk StationTechHelper so forge/cooking/mill synthetic techs match too",
+         form.contains("StationTechHelper.getStationTechs(item)"));
    }
 
    @Test
